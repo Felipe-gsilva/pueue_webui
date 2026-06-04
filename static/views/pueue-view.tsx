@@ -7,7 +7,6 @@ import {
 } from '@patternfly/react-table';
 import {
     ActionList,
-    ActionListGroup,
     ActionListItem,
     Alert,
     AlertActionCloseButton,
@@ -28,11 +27,10 @@ import {
     TextInputGroup,
     TextInputGroupMain,
     TextInputGroupUtilities,
-    TextVariants,
     getBreakpoint,
 } from '@patternfly/react-core';
 
-import { TimesIcon, RedoIcon, PlusCircleIcon, ArrowRightIcon, TrashIcon, CopyIcon, SyncAltIcon, EditIcon, CrossIcon, OffIcon } from '@patternfly/react-icons';
+import { TimesIcon, RedoIcon, PlusCircleIcon, ArrowRightIcon, TrashIcon, EditIcon } from '@patternfly/react-icons';
 import { pueueManager, PueueMessageEvent } from '../pueue-manager';
 import {
     timeout,
