@@ -10,7 +10,7 @@ function generateViewsIndex() {
     //console.log(views_dir);
 
     const views = fs.readdirSync(views_dir)
-        .filter((x) => x.endsWith('-view.tsx') && x !== 'pueue-view.tsx')
+        .filter((x) => x.endsWith('-view.tsx') && x !== 'pueue-view.tsx' && x !== 'analytics-view.tsx' && x !== 'auth-view.tsx' && x !== 'docs-view.tsx' && x !== 'example-view.tsx')
         .map((x) => path.parse(x).name)
         .filter((x) => x !== 'index');
     const importViews = views.map((x, i) => `import * as view_${i} from './${x}'`);

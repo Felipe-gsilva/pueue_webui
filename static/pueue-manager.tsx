@@ -112,6 +112,26 @@ export class PueueManager {
     run_local_command_async(cmd : string[]) : Promise<any> {
         return this.call_rpc('run_local_command_async', [cmd]);
     };
+
+    is_password_required() : Promise<boolean> {
+        return this.call_rpc('is_password_required', []);
+    };
+
+    verify_password(password : string) : Promise<any> {
+        return this.call_rpc('verify_password', [password]);
+    };
+
+    verify_session_token(token : string) : Promise<boolean> {
+        return this.call_rpc('verify_session_token', [token]);
+    };
+
+    logout(token : string) : Promise<boolean> {
+        return this.call_rpc('logout', [token]);
+    };
+
+    get_system_stats() : Promise<any> {
+        return this.call_rpc('get_system_stats', []);
+    };
 }
 
 export const pueueManager = new PueueManager();

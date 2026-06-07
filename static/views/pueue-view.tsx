@@ -28,10 +28,16 @@ import {
     TextInputGroupMain,
     TextInputGroupUtilities,
     getBreakpoint,
+    Modal,
+    ModalVariant,
+    Form,
+    FormGroup,
 } from '@patternfly/react-core';
 
-import { TimesIcon, RedoIcon, PlusCircleIcon, ArrowRightIcon, TrashIcon, EditIcon } from '@patternfly/react-icons';
+import { TimesIcon, RedoIcon, PlusCircleIcon, ArrowRightIcon, TrashIcon, EditIcon, BarsIcon, ListIcon, ChartLineIcon, SignOutAltIcon } from '@patternfly/react-icons';
 import { pueueManager, PueueMessageEvent } from '../pueue-manager';
+import { AnalyticsView } from './analytics-view';
+import { DocsView } from './docs-view';
 import {
     timeout,
     formatTime,
@@ -46,8 +52,10 @@ import {
 
 
 const LogView = ({id}) => {
+    const context = React.useContext(pueueContext);
     const [log, setLog] = React.useState<string>('');
     const [follow, setFollow] = React.useState<boolean>(true);
+    const [isCollapsed, setIsCollapsed] = React.useState<boolean>(true);
     const elemRef = React.useRef<HTMLDivElement>(null);
 
     const appendLog = (e : Event) => {
@@ -61,17 +69,19 @@ const LogView = ({id}) => {
         setLog((l) => l + log_data);
     };
 
+    const task = context.tasks[id] || new PueueTask();
+    const taskStatusStr = JSON.stringify(task.status);
+
     React.useEffect(() => {
+        setLog('');
         pueueManager.observer.addEventListener('onLogUpdated', appendLog);
         pueueManager.pueue_log_subscription(id, true)
             .then((data) => pueueManager.observer.dispatchEvent(new PueueMessageEvent('onLogUpdated', data)));
-        //console.log('mounted', id);
-        //return () => console.log('unmounted', id);
         return () => {
             pueueManager.pueue_log_subscription(id, false);
             pueueManager.observer.removeEventListener('onLogUpdated', appendLog);
         };
-    }, []);
+    }, [id, taskStatusStr]);
 
     React.useEffect(() => {
         if (elemRef.current && follow) {
@@ -86,20 +96,56 @@ const LogView = ({id}) => {
             .then((data) => pueueManager.observer.dispatchEvent(new PueueMessageEvent('onLogUpdated', data)));
     };
 
+    const handleCopy = () => {
+        navigator.clipboard.writeText(log || '')
+            .then(() => {
+                context.addAlert('Logs copiados para a área de transferência!', 'Copiado', 'success');
+            })
+            .catch((err) => {
+                console.error('Failed to copy: ', err);
+                context.addAlert('Não foi possível copiar os logs.', 'Erro', 'danger');
+            });
+    };
+
     return (
-        <>
-        <div style={{display: 'grid', position: 'relative'}}>
-            <div style={{position: 'absolute', top: 0, right: 15, backgroundColor: 'rgba(0, 0, 0, 0.5)'}}>
-                <ActionList isIconList>
-                    <ActionListItem><Button variant='plain' onClick={refresh}><RedoIcon/></Button></ActionListItem>
-                    <ActionListItem><Button variant='plain' onClick={() => setFollow((b) => !b)} style={follow ? {} : {textDecoration: 'line-through'}}>Fo</Button></ActionListItem>
-                </ActionList>
+        <div className="log-view-container">
+            <div className="log-header-actions">
+                <span className="log-summary-text">Logs do Processo #{id}</span>
+                <div className="log-action-buttons">
+                    <Button variant='plain' size="sm" onClick={refresh} title="Recarregar Logs">
+                        <RedoIcon style={{marginRight: '6px', display: 'inline-block', verticalAlign: 'middle'}}/>
+                        Recarregar
+                    </Button>
+                    <Button variant='plain' size="sm" onClick={() => setFollow((b) => !b)} className={follow ? "follow-active" : ""}>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block', verticalAlign: 'middle'}}>
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        {follow ? "Seguindo" : "Seguir"}
+                    </Button>
+                    <Button variant='plain' size="sm" onClick={handleCopy} title="Copiar Logs">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block', verticalAlign: 'middle'}}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        Copiar
+                    </Button>
+                    <Button variant='plain' size="sm" onClick={() => setIsCollapsed((c) => !c)}>
+                        {isCollapsed ? (
+                            <>
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block', verticalAlign: 'middle'}}><polyline points="6 9 12 15 18 9"/></svg>
+                                Expandir
+                            </>
+                        ) : (
+                            <>
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block', verticalAlign: 'middle'}}><polyline points="18 15 12 9 6 15"/></svg>
+                                Recolher
+                            </>
+                        )}
+                    </Button>
+                </div>
             </div>
-            <div ref={elemRef} className='log-view'>
-                <pre>{log || '(This log is empty)'}</pre>
+            <div ref={elemRef} className={`log-view ${isCollapsed ? 'collapsed' : 'expanded'}`}>
+                <pre>{log || '(Sem registros no log)'}</pre>
             </div>
         </div>
-        </>
     );
 };
 
@@ -141,25 +187,42 @@ const TextArea = (prop: any) => {
     );
 };
 
-const PueueTaskRow = ({ id, group, initialExpanded } : { id : string, group : string, initialExpanded : boolean }) => {
-    const [ isExpanded, setIsExapnded ] = React.useState<boolean>(initialExpanded);
+const getTaskStatusCategory = (task: PueueTask) => {
+    if (!task || !task.status) return 'queued';
+    
+    const unfoldStatus = (s: any): string[] => {
+        if (s && typeof s === 'object') {
+            const key = Object.keys(s)[0];
+            return key === 'Done' ? unfoldStatus(s[key]) : [key, ...unfoldStatus(s[key])];
+        }
+        return [String(s)];
+    };
+    
+    const statusArray = unfoldStatus(task.status);
+    if (statusArray.indexOf('Running') >= 0) return 'running';
+    if (statusArray.indexOf('Success') >= 0) return 'success';
+    if (statusArray.indexOf('Failed') >= 0 || statusArray.indexOf('Killed') >= 0 || statusArray.indexOf('DependencyFailed') >= 0) return 'failed';
+    return 'queued';
+};
+
+const PueueTaskCard = ({ 
+    id, 
+    group, 
+    selectedTaskId, 
+    selectedTab, 
+    onToggleDetails 
+} : { 
+    id : string, 
+    group : string,
+    selectedTaskId : string | null,
+    selectedTab : 'logs' | 'envs' | null,
+    onToggleDetails : (id : string, tab : 'logs' | 'envs' | null) => void
+}) => {
     const [ isEditable, setIsEditable ] = React.useState<boolean>(false);
-    const [ envs, setEnvs ] = React.useState<{[v:string] : string}>({});
-
-    React.useEffect(() => {
-        if (initialExpanded && !isExpanded)
-            setIsExapnded(true);
-    }, [initialExpanded]);
-
-    React.useEffect(() => {
-        if (isExpanded)
-            setLocationHash(group, id);
-    }, [isExpanded]);
 
     const context = React.useContext(pueueContext);
     const task = context.tasks[id] || new PueueTask();
-    const groupDetail = context.groups[group];
-    const isNew = (id == 'launch');
+    const groupDetail = context.groups[group] || { status: 'Unknown', dir: '' };
 
     const [ form, setForm ] = React.useState<{
         label: string,
@@ -168,15 +231,26 @@ const PueueTaskRow = ({ id, group, initialExpanded } : { id : string, group : st
         delay: string,
         dir: string,
     }>({
-        label: "",
-        command: "",
-        deps: "",
+        label: task.label || "",
+        command: task.command || "",
+        deps: task.dependencies.join(",") || "",
         delay: "",
-        dir: "",
+        dir: task.path || "",
     });
-    const bindForm = textInputBinder.bind(null, form, setForm);
 
-    const alertDone = (x : string) => context.addAlert(x, 'Done', 'Success');
+    React.useEffect(() => {
+        if (isEditable) {
+            setForm({
+                label: task.label || "",
+                command: task.command || "",
+                deps: task.dependencies.join(",") || "",
+                delay: "",
+                dir: task.path || "",
+            });
+        }
+    }, [isEditable, task]);
+
+    const alertDone = (x : string) => context.addAlert(x, 'Done', 'success');
 
     const unfoldStatus = (s : any) => {
         if (s && typeof s == "object") {
@@ -186,259 +260,510 @@ const PueueTaskRow = ({ id, group, initialExpanded } : { id : string, group : st
         else return [String(s)];
     };
 
-    const getLabel = (id : string) => {
-        const task = context.tasks[id];
-        const status = task ? unfoldStatus(task.status) : [];
-        const statusColor = (
-            status.indexOf('Success') >= 0 ? 'green' :
-            status.indexOf('Running') >= 0 ? 'blue' :
-            status.indexOf('Failed') >= 0 ? 'red' :
-            status.indexOf('Killed') >= 0 ? 'red' :
-            status.indexOf('DependencyFailed') >= 0 ? 'red' :
-            'grey');
-
-        return (<Label key={id} color={statusColor}>{task?.label}#{id}</Label>);
-    };
+    const statusArray = unfoldStatus(task.status);
+    const statusText = statusArray.join(' ');
+    
+    const statusColorClass = (
+        statusArray.indexOf('Success') >= 0 ? 'status-success' :
+        statusArray.indexOf('Running') >= 0 ? 'status-running' :
+        statusArray.indexOf('Failed') >= 0 ? 'status-failed' :
+        statusArray.indexOf('Killed') >= 0 ? 'status-failed' :
+        statusArray.indexOf('DependencyFailed') >= 0 ? 'status-failed' :
+        'status-queued'
+    );
 
     const dateStart = task.start ? new Date(Date.parse(task.start)) : null;
     const dateEnd = task.end ? new Date(Date.parse(task.end)) : null;
 
-    const data : {[key : string] : React.ReactNode} = {};
-    const actions : {[key : string] : ()=>void} = {};
-
-    const dataPropertyTable = {
-        label: { title: 'Label', priority: 0 },
-        status: { title: 'Status', priority: 1 },
-        command: { title: 'Command', priority: 2 },
-        deps: { title: 'Dependencies', priority: 3 },
-        time: { title: 'Time Elapsed', priority: 4 },
-        dir: { title: 'Working Directory', priority: 5 },
-        env: { title: 'Environments', priority: 6, boarden: Object.keys(envs).length > 0 },
-        logs: { title: 'Logs', priority: 7, boarden: true },
+    const handleRestart = () => pueueManager.pueue('restart', {in_place: true}, [id]).then(alertDone).then(context.updateStatus);
+    const handleKill = () => pueueManager.pueue('kill', {}, [id]).then(alertDone).then(context.updateStatus);
+    const handlePause = () => pueueManager.pueue('pause', {}, [id]).then(alertDone).then(context.updateStatus);
+    const handleStart = () => pueueManager.pueue('start', {}, [id]).then(alertDone).then(context.updateStatus);
+    const handleRemove = () => pueueManager.pueue('remove', {}, [id]).then(alertDone).then(context.updateStatus);
+    
+    const handleSaveEdit = async () => {
+        await pueueManager.pueue('restart', {in_place: true, stashed: true}, [id]).then(alertDone);
+        await pueueManager.pueue_edit(id, {
+            'command': form.command,
+            'path': form.dir,
+            'label': form.label,
+        }).then(alertDone);
+        await pueueManager.pueue('enqueue', form.delay ? {delay: form.delay} : {}, [id]).then(alertDone);
+        setIsEditable(false);
+        context.updateStatus();
     };
 
-    const actionsPropertyTable = {
-        add: { title: 'Add', priority: 0, icon: <PlusCircleIcon/> },
-        restart: { title: 'Restart', priority: 1, icon: <RedoIcon/> },
-        kill: { title: 'Kill', priority: 2, icon: <TimesIcon/> },
-        remove: { title: 'Remove', priority: 3, icon: <TrashIcon/> },
-        edit: { title: 'Edit', priority: 4, icon: <EditIcon/> },
-    };
+    const isSelectedEnvs = selectedTaskId === id && selectedTab === 'envs';
+    const isSelectedLogs = selectedTaskId === id && selectedTab === 'logs';
 
-    if (isEditable || isNew) {
-        data.label = <TextInput placeholder='Label' {...bindForm('label')}/>;
-        data.command = <TextArea placeholder='Command' {...bindForm('command')} autoReize/>;
-        data.deps = <TextInput placeholder='Dependencies' {...bindForm('deps')}/>;
-        data.time = <TextInput placeholder='Delay (e.g. 15s, 1d)' {...bindForm('delay')}/>;
+    return (
+        <Card className={`task-card ${statusColorClass} glass-panel ${isEditable ? 'is-editing' : ''} ${selectedTaskId === id ? 'is-active' : ''}`}>
+            <div className="task-card-header">
+                <div className="task-identity">
+                    <span className="task-id">#{id}</span>
+                    <span className="task-label-text">{task.label || '(Sem etiqueta)'}</span>
+                </div>
+                <span className={`task-status-tag ${statusColorClass}`}>{statusText}</span>
+            </div>
 
-        actions.add = async () => {
-            await pueueManager.pueue('add', {
-                label: form.label ? form.label : null,
-                after: form.deps  ? form.deps.split(',') : [],
-                delay: form.delay ? form.delay : null,
-                group: group,
-                working_directory: form.dir || groupDetail.dir || context.cwd,
-            }, [form.command]).then(alertDone);
-            if (!isNew)
-                setIsEditable(false);
-        };
+            <div className="task-card-body">
+                {isEditable ? (
+                    <Form isHorizontal={false} className="task-edit-form">
+                        <FormGroup label="Etiqueta" fieldId={`edit-label-${id}`}>
+                            <TextInput id={`edit-label-${id}`} value={form.label} onChange={(_, v) => setForm(f => ({ ...f, label: v }))} />
+                        </FormGroup>
+                        <FormGroup label="Dependências" fieldId={`edit-deps-${id}`}>
+                            <TextInput id={`edit-deps-${id}`} value={form.deps} onChange={(_, v) => setForm(f => ({ ...f, deps: v }))} />
+                        </FormGroup>
+                        <FormGroup label="Comando" fieldId={`edit-command-${id}`} isRequired>
+                            <TextInput id={`edit-command-${id}`} value={form.command} onChange={(_, v) => setForm(f => ({ ...f, command: v }))} isRequired />
+                        </FormGroup>
+                        <FormGroup label="Caminho (Diretório)" fieldId={`edit-dir-${id}`}>
+                            <TextInput id={`edit-dir-${id}`} value={form.dir} onChange={(_, v) => setForm(f => ({ ...f, dir: v }))} />
+                        </FormGroup>
+                        <div className="edit-actions" style={{display: 'flex', gap: '8px', marginTop: '12px'}}>
+                            <Button size="sm" onClick={handleSaveEdit}>Salvar</Button>
+                            <Button size="sm" variant="secondary" onClick={() => setIsEditable(false)}>Cancelar</Button>
+                        </div>
+                    </Form>
+                ) : (
+                    <>
+                        <div className="task-command-block">
+                            <code>{task.command}</code>
+                        </div>
 
-        if (!isNew) {
-            actions.restart = async ()=> {
-                await pueueManager.pueue('restart', {in_place: true, stashed: true}, [id]).then(alertDone);
-                await pueueManager.pueue_edit(id, {
-                        'command': form.command,
-                        'path': form.dir,
-                        'label': form.label,
-                    }).then(alertDone);
-                await pueueManager.pueue('enqueue', form.delay ? {delay: form.delay} : {}, [id]).then(alertDone);
-                setIsEditable(false);
-            };
+                        <div className="task-metadata-grid">
+                            <div className="meta-item">
+                                <span className="meta-label">Diretório:</span>
+                                <span className="meta-value">{task.path}</span>
+                            </div>
+                            {task.dependencies && task.dependencies.length > 0 && (
+                                <div className="meta-item">
+                                    <span className="meta-label">Dependências:</span>
+                                    <span className="meta-value">
+                                        {task.dependencies.map(depId => (
+                                            <span key={depId} className="task-dep-pill">#{depId}</span>
+                                        ))}
+                                    </span>
+                                </div>
+                            )}
+                            <div className="meta-item">
+                                <span className="meta-label">Duração:</span>
+                                <span className="meta-value">
+                                    {formatTime(dateStart)} &rarr; {formatTime(dateEnd)}
+                                </span>
+                            </div>
+                        </div>
+                    </>
+                )}
+            </div>
 
-            actions.edit = ()=>setIsEditable(false);
+            <div className="task-card-footer">
+                <div className="footer-left-buttons">
+                    <Button 
+                        variant={isSelectedLogs ? "primary" : "secondary"} 
+                        size="sm" 
+                        onClick={() => onToggleDetails(id, isSelectedLogs ? null : 'logs')}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                        <span>Logs</span>
+                        {isSelectedLogs ? (
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{display: 'block'}}><polyline points="18 15 12 9 6 15"/></svg>
+                        ) : (
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{display: 'block'}}><polyline points="6 9 12 15 18 9"/></svg>
+                        )}
+                    </Button>
+                    <Button 
+                        variant={isSelectedEnvs ? "primary" : "secondary"} 
+                        size="sm" 
+                        onClick={() => onToggleDetails(id, isSelectedEnvs ? null : 'envs')}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                    >
+                        <span>Envs</span>
+                        {isSelectedEnvs ? (
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{display: 'block'}}><polyline points="18 15 12 9 6 15"/></svg>
+                        ) : (
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{display: 'block'}}><polyline points="6 9 12 15 18 9"/></svg>
+                        )}
+                    </Button>
+                </div>
+
+                <div className="footer-right-actions">
+                    <ActionList isIconList>
+                        <ActionListItem>
+                            <Button variant="plain" onClick={handleRestart} title="Reiniciar Tarefa"><RedoIcon/></Button>
+                        </ActionListItem>
+                        {statusArray.indexOf('Running') >= 0 && statusArray.indexOf('Paused') < 0 && (
+                            <ActionListItem>
+                                <Button variant="plain" onClick={handlePause} title="Pausar Tarefa">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{display: 'block'}}><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                                </Button>
+                            </ActionListItem>
+                        )}
+                        {(statusArray.indexOf('Paused') >= 0 || statusArray.indexOf('Stashed') >= 0) && (
+                            <ActionListItem>
+                                <Button variant="plain" onClick={handleStart} title="Retomar Tarefa">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{display: 'block'}}><path d="M8 5v14l11-7z"/></svg>
+                                </Button>
+                            </ActionListItem>
+                        )}
+                        {statusArray.indexOf('Running') >= 0 && (
+                            <ActionListItem>
+                                <Button variant="plain" onClick={handleKill} title="Parar (Kill) Tarefa"><TimesIcon/></Button>
+                            </ActionListItem>
+                        )}
+                        <ActionListItem>
+                            <Button variant="plain" onClick={() => setIsEditable(true)} title="Editar Tarefa"><EditIcon/></Button>
+                        </ActionListItem>
+                        <ActionListItem>
+                            <Button variant="plain" onClick={handleRemove} title="Excluir Tarefa"><TrashIcon/></Button>
+                        </ActionListItem>
+                    </ActionList>
+                </div>
+            </div>
+        </Card>
+    );
+};
+
+const TaskDetailsPanel = ({ id, group, tab, onClose, onTabChange } : { 
+    id : string | null, 
+    group : string, 
+    tab : 'logs' | 'envs' | null, 
+    onClose : () => void,
+    onTabChange : (t : 'logs' | 'envs') => void
+}) => {
+    const context = React.useContext(pueueContext);
+    const task = (id && context.tasks[id]) || new PueueTask();
+    const [envs, setEnvs] = React.useState<{[v:string] : string}>({});
+    const [isEnvCollapsed, setIsEnvCollapsed] = React.useState<boolean>(true);
+
+    const taskStatusStr = JSON.stringify(task.status);
+
+    React.useEffect(() => {
+        if (id && tab === 'envs') {
+            pueueManager.pueue('status', {json: true, group, __controller_remove_envs: false})
+                .then((data) => {
+                    if (data.tasks[id]) {
+                        setEnvs(data.tasks[id].envs || {});
+                    }
+                });
         }
-    }
-    else {
-        data.label = getLabel(id);
-        data.command = task.command;
-        data.deps = task.dependencies.map(getLabel);
-        data.time = <Text style={{textWrap: 'nowrap'}}>{formatTime(dateStart)}&nbsp;&nbsp;<ArrowRightIcon/>&nbsp;&nbsp;{formatTime(dateEnd)}</Text>;
+    }, [id, tab, group, taskStatusStr]);
 
-        data.status = unfoldStatus(task.status).join(' ');
-        data.dir = task.path;
+    const handleCopyEnvs = () => {
+        const envsText = Object.entries(envs).length > 0 
+            ? Object.entries(envs).map(([k, v]) => `${k} = "${v}"`).join('\n')
+            : "";
+        navigator.clipboard.writeText(envsText)
+            .then(() => {
+                context.addAlert('Variáveis de ambiente copiadas!', 'Copiado', 'success');
+            })
+            .catch((err) => {
+                console.error('Failed to copy envs: ', err);
+                context.addAlert('Não foi possível copiar as variáveis.', 'Erro', 'danger');
+            });
+    };
 
-        data.env = Object.keys(envs).length == 0 ? (
-            <Button size='sm' variant='secondary'
-                onClick={()=>pueueManager.pueue('status', {json: true, group, __controller_remove_envs: false}).then((data) => setEnvs(data.tasks[id].envs))}
-            >...</Button>
-        ) : (
-            <div className='envs-view'>
-                <pre>
-                    {Object.entries(envs).map(([k, v]) => `${k} = "${v}"`).join('\n')}
-                </pre>
+    if (!id || !tab) {
+        return (
+            <div className="task-expanded-details-panel glass-panel placeholder-state">
+                <div className="placeholder-content">
+                    <svg className="placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="3 3" />
+                        <path d="M8 7h8M8 12h8M8 17h6" />
+                    </svg>
+                    <div className="placeholder-text-wrapper">
+                        <span className="placeholder-badge">Painel de Detalhes</span>
+                        <h4>Selecione uma tarefa acima</h4>
+                        <p>Clique nos botões de <strong>Logs</strong> ou <strong>Envs</strong> em qualquer tarefa para carregar seus detalhes nesta seção.</p>
+                    </div>
+                </div>
             </div>
         );
-
-        data.logs = <LogView id={id}/>;
-
-        actions.kill = ()=>pueueManager.pueue('kill', {}, [id]).then(alertDone);
-        actions.remove = ()=>pueueManager.pueue('remove', {}, [id]).then(alertDone);
-        actions.restart = ()=>pueueManager.pueue('restart', {in_place: true}, [id]).then(alertDone);
-        actions.edit = () => {
-            setForm({label: task.label, command: task.command, deps: task.dependencies.join(','), delay: '', dir: task.path});
-            setIsEditable(true);
-        }
     }
 
-    const detailRow = (
-        <Tr key='detail'>
-            {!context.sm && <Td></Td>}
-            <Td colSpan={5}>
-                <ExpandableRowContent>
-                    <DescriptionList isHorizontal termWidth='20ch' isCompact>
-                    {
-                        Object.keys(data)
-                            .filter((k) => (context.sm ? ['label'] : ['label', 'command', 'deps', 'time']).indexOf(k) < 0)
-                            .sort((k1, k2) => dataPropertyTable[k1].priority - dataPropertyTable[k2].priority)
-                            .map((k) => (<>
-                                <Desc name={dataPropertyTable[k].title} wrapOnSm={dataPropertyTable[k].boarden}>{data[k]}</Desc>
-                            </>))
-                    }
-                    </DescriptionList>
-                </ExpandableRowContent>
-            </Td>
-        </Tr>
-    );
+    return (
+        <div className="task-expanded-details-panel glass-panel">
+            <div className="panel-header">
+                <div className="panel-title-section">
+                    <span className="panel-label">Detalhes da Tarefa</span>
+                    <h4 className="panel-task-title">#{id} - {task.label || '(Sem etiqueta)'}</h4>
+                </div>
+                <div className="panel-tabs">
+                    <button 
+                        className={`panel-tab-btn ${tab === 'logs' ? 'active' : ''}`}
+                        onClick={() => onTabChange('logs')}
+                    >
+                        Logs de Execução
+                    </button>
+                    <button 
+                        className={`panel-tab-btn ${tab === 'envs' ? 'active' : ''}`}
+                        onClick={() => onTabChange('envs')}
+                    >
+                        Variáveis de Ambiente
+                    </button>
+                </div>
+                <button className="panel-close-btn" onClick={onClose} title="Fechar Detalhes">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
 
-    const mainRow = (
-        <Tr key={'main-' + id}>
-            <Td expand={{ rowIndex: Number(id), isExpanded, onToggle: () => setIsExapnded((v) => !v), }} />
-            { context.sm ? (
-                <>
-                    <Td>{data.label}</Td>
-                    <ActionsColumn items={
-                        Object.keys(actions)
-                            .sort((k1, k2) => actionsPropertyTable[k1].priority - actionsPropertyTable[k2].priority)
-                            .map((k) => { return { title: actionsPropertyTable[k].title, onClick: actions[k] }; })
-                    } />
-                </>
-            ) : (
-                <>
-                    <Td>{data.label}</Td>
-                    <Td>{data.command}</Td>
-                    <Td>{data.deps}</Td>
-                    <Td>{data.time}</Td>
-                    <Td><ActionList isIconList>
-                    { 
-                        Object.keys(actions)
-                            .sort((k1, k2) => actionsPropertyTable[k1].priority - actionsPropertyTable[k2].priority)
-                            .map((k) => <ActionListItem><Button variant='plain' onClick={actions[k]}>{actionsPropertyTable[k].icon}</Button></ActionListItem>)
-                    }
-                    </ActionList></Td>
-                </>
-            )}
-        </Tr>
+            <div className="panel-content">
+                {tab === 'logs' && (
+                    <LogView id={id} />
+                )}
+                {tab === 'envs' && (
+                    <div className="envs-view-container">
+                        <div className="envs-header-actions">
+                            <span className="envs-summary-text">{Object.keys(envs).length} variáveis encontradas</span>
+                            <div className="envs-action-buttons">
+                                <Button variant="plain" size="sm" onClick={handleCopyEnvs} title="Copiar Variáveis">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block', verticalAlign: 'middle'}}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                    Copiar
+                                </Button>
+                                <Button variant="plain" size="sm" onClick={() => setIsEnvCollapsed(!isEnvCollapsed)}>
+                                    {isEnvCollapsed ? (
+                                        <>
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block', verticalAlign: 'middle'}}><polyline points="6 9 12 15 18 9"/></svg>
+                                            Expandir
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block', verticalAlign: 'middle'}}><polyline points="18 15 12 9 6 15"/></svg>
+                                            Recolher
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                        <div className={`envs-view ${isEnvCollapsed ? 'collapsed' : 'expanded'}`}>
+                            <pre>
+                                {Object.entries(envs).length > 0 
+                                    ? Object.entries(envs).map(([k, v]) => `${k} = "${v}"`).join('\n')
+                                    : "(Nenhuma variável de ambiente carregada)"
+                                }
+                            </pre>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
     );
-
-    return (<Tbody isExpanded={isExpanded} className={'text-input-with-proper-background'}>{[mainRow, isExpanded ? detailRow : undefined]}</Tbody>);
 };
 
 const PueueGroupTable = ({ group, hash } : { group : string, hash : [string, string] }) => {
     const context = React.useContext(pueueContext);
-    const groupDetail = context.groups[group];
-
-    const [ form, setForm ] = React.useState<{
-        parallel: string,
-        dir: string,
-    }>({
-        parallel: groupDetail.parallel_tasks.toString(),
-        dir: groupDetail.dir,
-    });
-    const bindForm = textInputBinder.bind(null, form, setForm);
+    const groupDetail = context.groups[group] || { status: 'Unknown', dir: '' };
 
     const alertDone = (x : string) => context.addAlert(x, 'Done', 'success');
 
-    const rows : React.ReactNode[] = Object.keys(context.tasks).map((id : string) => (<PueueTaskRow key={id} id={id} group={group} initialExpanded={id == hash[1]} />));
-    rows.push(<PueueTaskRow key='launch' id='launch' group={group} initialExpanded={false} />);
+    const [isModalOpen, setIsModalOpen] = React.useState(false);
+    const [selectedTaskId, setSelectedTaskId] = React.useState<string | null>(null);
+    const [selectedTab, setSelectedTab] = React.useState<'logs' | 'envs' | null>(null);
+    const detailsRef = React.useRef<HTMLDivElement | null>(null);
 
-    const OptionalInnerScrollContainer = context.sm ? React.Fragment : InnerScrollContainer;
+    React.useEffect(() => {
+        if (selectedTaskId && selectedTab && detailsRef.current) {
+            setTimeout(() => {
+                detailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+        }
+    }, [selectedTaskId, selectedTab]);
+
+    const [modalForm, setModalForm] = React.useState({
+        label: '',
+        command: '',
+        deps: '',
+        delay: '',
+        dir: ''
+    });
+
+    const handleAddTask = async () => {
+        if (!modalForm.command.trim()) {
+            context.addAlert('Por favor, insira o comando.', 'Erro', 'danger');
+            return;
+        }
+        await pueueManager.pueue('add', {
+            label: modalForm.label ? modalForm.label : null,
+            after: modalForm.deps ? modalForm.deps.split(',') : [],
+            delay: modalForm.delay ? modalForm.delay : null,
+            group: group,
+            working_directory: modalForm.dir || groupDetail.dir || context.cwd,
+        }, [modalForm.command]).then(alertDone);
+        setIsModalOpen(false);
+        setModalForm({ label: '', command: '', deps: '', delay: '', dir: '' });
+        context.updateStatus();
+    };
+
+    const groupTaskIds = Object.keys(context.tasks).filter(id => {
+        const t = context.tasks[id];
+        return t.group === group;
+    });
+
+    const totalCount = groupTaskIds.length;
+    const runningCount = groupTaskIds.filter(id => getTaskStatusCategory(context.tasks[id]) === 'running').length;
+    const successCount = groupTaskIds.filter(id => getTaskStatusCategory(context.tasks[id]) === 'success').length;
+    const failedCount = groupTaskIds.filter(id => getTaskStatusCategory(context.tasks[id]) === 'failed').length;
+    const queuedCount = groupTaskIds.filter(id => getTaskStatusCategory(context.tasks[id]) === 'queued').length;
 
     return (
-    <Card>
-    <CardBody>
-        <DescriptionList isHorizontal termWidth='20ch' isCompact>
-            <Desc name={'Group Name'}>{group}</Desc>
-            <Desc name={'Status'}>
-                {groupDetail.status}
-            </Desc>
-            <Desc name={'Opeartions'} wrapOnSm>
-                <ActionList>
-                    <ActionListItem>
-                    <Button variant='tertiary' size='sm'
-                        onClick={() =>
-                            (groupDetail.status == 'Running') ? 
-                                pueueManager.pueue('pause', {group}).then(alertDone).then(context.updateStatus) :
-                                pueueManager.pueue('start', {group}).then(alertDone).then(context.updateStatus)
-                        }
+        <div className="group-view-container">
+            {/* Header com Hierarquia de Informação */}
+            <div className="group-info-header glass-panel">
+                <div className="group-header-left">
+                    <span className="group-label">Fila de Execução</span>
+                    <h3 className="group-name-title">{group}</h3>
+                    <div className="group-status-wrapper">
+                        <span className={`group-status-badge ${groupDetail.status.toLowerCase()}`}>
+                            <span className="pulse-indicator"></span>
+                            {groupDetail.status === 'Running' ? 'Ativa' : 'Pausada'}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="group-stats-summary">
+                    <div className="group-stat-pill">
+                        <span className="stat-num">{totalCount}</span>
+                        <span className="stat-label">Total</span>
+                    </div>
+                    <div className="group-stat-pill running">
+                        <span className="stat-num">{runningCount}</span>
+                        <span className="stat-label">Executando</span>
+                    </div>
+                    <div className="group-stat-pill queued">
+                        <span className="stat-num">{queuedCount}</span>
+                        <span className="stat-label">Fila</span>
+                    </div>
+                    <div className="group-stat-pill success">
+                        <span className="stat-num">{successCount}</span>
+                        <span className="stat-label">Sucesso</span>
+                    </div>
+                    <div className="group-stat-pill failed">
+                        <span className="stat-num">{failedCount}</span>
+                        <span className="stat-label">Falhas</span>
+                    </div>
+                </div>
+                
+                <div className="group-actions-section">
+                    <Button 
+                        variant="secondary" 
+                        onClick={async () => {
+                            await pueueManager.pueue('clean', {group: group}).then(alertDone);
+                            context.updateStatus();
+                        }}
                     >
-                        {groupDetail.status == 'Running' ? 'Pause' : 'Resume'}
+                        Limpar Fila
                     </Button>
-                    </ActionListItem>
-                    <ActionListItem>
-                    <Button variant='tertiary' size='sm'
-                        onClick={() => pueueManager.pueue('clean', {group}).then(alertDone)}
-                    >Clean</Button>{' '}
-                    </ActionListItem>
-                    <ActionListItem>
-                    <Button variant='tertiary' size='sm'
-                        onClick={() => pueueManager.pueue(['group', 'delete'], {}, [group]).then(alertDone)}
-                    >Delete</Button>
-                    </ActionListItem>
-                </ActionList>
-            </Desc>
-            <Desc name={'Parallel Tasks'}>
-                <TextInputGroup>
-                    <TextInputGroupMain {...bindForm('parallel')}/>
-                    <TextInputGroupUtilities>
-                        <Button variant='plain' onClick={() => {
-                                pueueManager.pueue('parallel', {group}, [form.parallel]).then(alertDone);
+                    <Button variant="primary" className="add-task-btn-main" onClick={() => setIsModalOpen(true)}>
+                        + Adicionar Tarefa
+                    </Button>
+                </div>
+            </div>
+
+            {/* Grid de Tarefas como Cards */}
+            <div className="tasks-cards-grid">
+                {groupTaskIds.length > 0 ? (
+                    groupTaskIds.map((id) => (
+                        <PueueTaskCard 
+                            key={id} 
+                            id={id} 
+                            group={group} 
+                            selectedTaskId={selectedTaskId}
+                            selectedTab={selectedTab}
+                            onToggleDetails={(tid, tabType) => {
+                                if (tabType === null) {
+                                    setSelectedTaskId(null);
+                                    setSelectedTab(null);
+                                } else {
+                                    setSelectedTaskId(tid);
+                                    setSelectedTab(tabType);
+                                }
                             }}
-                        ><ArrowRightIcon/></Button>
-                    </TextInputGroupUtilities>
-                </TextInputGroup>
-            </Desc>
-            <Desc name={'Working Directory'} wrapOnSm>
-                <TextInputGroup>
-                    <TextInputGroupMain placeholder={context.cwd} {...bindForm('dir')}/>
-                    <TextInputGroupUtilities>
-                        <Button variant='plain' onClick={() => {
-                                context.groups[group].dir = form.dir;
-                                context.storeMeta().then(alertDone);
-                            }}
-                        ><Text component='small'>Apply to Group</Text> <ArrowRightIcon/></Button>
-                    </TextInputGroupUtilities>
-                </TextInputGroup>
-            </Desc>
-        </DescriptionList>
-    </CardBody>
-    <CardBody>
-        <OptionalInnerScrollContainer>
-            <Table variant='compact' gridBreakPoint=''>
-                { !context.sm && <Thead>
-                    <Tr>
-                        <Th aria-label="expand"></Th>
-                        <Th width={10} style={{minWidth: 120}}>Label</Th>
-                        <Th width={40} style={{minWidth: 400}}>Command</Th>
-                        <Th width={10} style={{minWidth: 120}}>Dependencies</Th>
-                        <Th width={10}>Timing</Th>
-                        <Th width={10} aria-label="actions"></Th>
-                    </Tr>
-                </Thead> }
-                {rows}
-            </Table>
-        </OptionalInnerScrollContainer>
-    </CardBody>
-    </Card>
+                        />
+                    ))
+                ) : (
+                    <div className="empty-tasks-state glass-panel">
+                        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
+                        <p>Nenhuma tarefa ativa neste grupo.</p>
+                        <Button variant="secondary" onClick={() => setIsModalOpen(true)}>Adicionar Tarefa</Button>
+                    </div>
+                )}
+            </div>
+
+            {/* Expanded Task Details (Full Width below Grid) */}
+            <div ref={detailsRef} className="task-details-wrapper">
+                <TaskDetailsPanel 
+                    id={selectedTaskId} 
+                    group={group} 
+                    tab={selectedTab} 
+                    onClose={() => {
+                        setSelectedTaskId(null);
+                        setSelectedTab(null);
+                    }}
+                    onTabChange={(t) => setSelectedTab(t)}
+                />
+            </div>
+
+            {/* Modal para Adicionar Tarefa */}
+            <Modal
+                title="Adicionar Nova Tarefa"
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                variant={ModalVariant.small}
+                actions={[
+                    <Button key="confirm" variant="primary" onClick={handleAddTask}>
+                        Adicionar
+                    </Button>,
+                    <Button key="cancel" variant="link" onClick={() => setIsModalOpen(false)}>
+                        Cancelar
+                    </Button>
+                ]}
+            >
+                <Form isHorizontal>
+                    <FormGroup label="Etiqueta (Label)" fieldId="task-label">
+                        <TextInput
+                            id="task-label"
+                            value={modalForm.label}
+                            onChange={(_, v) => setModalForm(f => ({ ...f, label: v }))}
+                            placeholder="ex: build-prod"
+                        />
+                    </FormGroup>
+                    <FormGroup label="Comando" fieldId="task-command" isRequired>
+                        <TextInput
+                            id="task-command"
+                            value={modalForm.command}
+                            onChange={(_, v) => setModalForm(f => ({ ...f, command: v }))}
+                            placeholder="ex: npm run build"
+                            isRequired
+                        />
+                    </FormGroup>
+                    <FormGroup label="Dependências" fieldId="task-deps" helperText="Separadas por vírgula (IDs)">
+                        <TextInput
+                            id="task-deps"
+                            value={modalForm.deps}
+                            onChange={(_, v) => setModalForm(f => ({ ...f, deps: v }))}
+                            placeholder="ex: 1,2"
+                        />
+                    </FormGroup>
+                    <FormGroup label="Atraso (Delay)" fieldId="task-delay" helperText="ex: 30s, 2h, 1d">
+                        <TextInput
+                            id="task-delay"
+                            value={modalForm.delay}
+                            onChange={(_, v) => setModalForm(f => ({ ...f, delay: v }))}
+                            placeholder="ex: 5m"
+                        />
+                    </FormGroup>
+                    <FormGroup label="Diretório de Trabalho" fieldId="task-dir">
+                        <TextInput
+                            id="task-dir"
+                            value={modalForm.dir}
+                            onChange={(_, v) => setModalForm(f => ({ ...f, dir: v }))}
+                            placeholder={groupDetail.dir || context.cwd || "Caminho absoluto"}
+                        />
+                    </FormGroup>
+                </Form>
+            </Modal>
+        </div>
     );
 };
 
@@ -460,7 +785,17 @@ function setLocationHash(hashGroup : string, hashTask : string = '') {
     window.location.hash = '#' + encodeURIComponent(hashGroup) + (hashTask.length > 0 ? '/' + encodeURIComponent(hashTask) : '');
 }
 
-export const PueueView = ({ followGlobalDark, children } : { followGlobalDark : boolean, children : React.ReactNode }) => {
+export const PueueView = ({ 
+    followGlobalDark, 
+    children, 
+    onLogout, 
+    authEnabled 
+} : { 
+    followGlobalDark : boolean, 
+    children : React.ReactNode, 
+    onLogout?: () => void, 
+    authEnabled?: boolean 
+}) => {
     const [ currentGroup, setCurrentGroup ] = React.useState<string>('default');
     const [ groups, setGroups ] = React.useState<{[id : string] : PueueGroup}>({});
     const [ tasks, setTasks ] = React.useState<{[id : string] : PueueTask}>({});
@@ -471,6 +806,10 @@ export const PueueView = ({ followGlobalDark, children } : { followGlobalDark : 
     // UI
     const [ dark, setDark ] = React.useState<boolean>(true);
     const [ sm, setSm ] = React.useState(isSmall());
+    const [ currentView, setCurrentView ] = React.useState<'queue' | 'analytics' | 'docs'>('queue');
+    const [ mobileSidebarOpen, setMobileSidebarOpen ] = React.useState<boolean>(false);
+    const [ sidebarCollapsed, setSidebarCollapsed ] = React.useState<boolean>(false);
+    const [ groupsSubmenuOpen, setGroupsSubmenuOpen ] = React.useState<boolean>(true);
 
     const currentContext = new PueueContext();
     currentContext.tasks = structuredClone(tasks);
@@ -481,7 +820,7 @@ export const PueueView = ({ followGlobalDark, children } : { followGlobalDark : 
     currentContext.updateStatus = () => {
         Promise.all([
             pueueManager.pueue_webui_meta(),
-            pueueManager.pueue('status', { json: true, group: currentGroup })
+            pueueManager.pueue('status', { json: true })
         ]).then(([metaData, statusData]) => {
             Object.keys(statusData.groups).forEach((k) => {
                 statusData.groups[k].dir = metaData.groups && metaData.groups[k] && metaData.groups[k].dir ? metaData.groups[k].dir : '';
@@ -563,40 +902,167 @@ export const PueueView = ({ followGlobalDark, children } : { followGlobalDark : 
     }, [hash, groups]);
 
     React.useEffect(() => {
-        if (!followGlobalDark)
-            document.documentElement.className = dark ? 'pf-v5-theme-dark' : '';
+        if (!followGlobalDark) {
+            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+            document.documentElement.className = dark ? 'pf-v5-theme-dark dark' : 'light';
+        }
     }, [dark]);
 
-    const groupTabs = Object.keys(groups).map((group) => (
-        <Tab key={group} eventKey={group} title={group}>
-            { currentGroup == group ? <PueueGroupTable group={group} hash={hash}/> : <></> }
-        </Tab>
-    ));
+    // Removida a barra de abas padrão do PatternFly. Utilizaremos o navegador de abas customizado.
 
     const OptionalCard = sm ? React.Fragment : Card;
     const OptionalCardBody = sm ? React.Fragment : CardBody;
 
     return (
     <PueueContextProvider value={currentContext}>
-        {children}
-        <OptionalCard key='main-view'>
-            <OptionalCardBody>
-                { followGlobalDark ? <></> : (
-                    <div style={{textAlign: 'right', paddingBottom: 10}}>
-                        <Switch id='dark_mode' label='Dark Mode' labelOff='Light Mode' isChecked={dark} isReversed onChange={(_, b)=>setDark(b)} />
+        <div className={`app-container ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+            {/* Mobile Toggle Hamburger */}
+            <button className="mobile-header-toggle" onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}>
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+
+            {/* Left Sidebar */}
+            <aside className={`app-sidebar ${mobileSidebarOpen ? 'mobile-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
+                <div className={`sidebar-brand-wrapper ${sidebarCollapsed ? 'sidebar-brand-collapsed' : 'sidebar-brand-expanded'}`}>
+                    <div className="brand-logo-container">
+                        <img src="/lipai_01_preto 1.svg" alt="LIPAI Logo" className="sidebar-logo" />
+                    </div>
+                    
+                    <div className={`sidebar-controls ${sidebarCollapsed ? 'sidebar-controls-collapsed' : 'sidebar-controls-expanded'}`}>
+                        {/* Theme Toggler */}
+                        {!followGlobalDark && (
+                            <button 
+                                className="icon-btn-only" 
+                                onClick={() => setDark(!dark)} 
+                                title={dark ? "Modo Claro" : "Modo Escuro"}
+                            >
+                                {dark ? (
+                                    /* Sun Icon */
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                                ) : (
+                                    /* Moon Icon */
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                                )}
+                            </button>
+                        )}
+                        
+                        {/* Collapse trigger */}
+                        <button 
+                            className="icon-btn-only" 
+                            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                            title={sidebarCollapsed ? "Expandir Menu" : "Recolher Menu"}
+                        >
+                            {sidebarCollapsed ? (
+                                /* Angle Right */
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
+                            ) : (
+                                /* Angle Left */
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+                            )}
+                        </button>
+                    </div>
+                </div>
+                
+                <nav className="sidebar-menu">
+                    {!sidebarCollapsed && <span className="sitemap-label">Menu Principal</span>}
+                    
+                    {/* Fila de Tarefas */}
+                    <button 
+                        className={`menu-item ${currentView === 'queue' ? 'active' : ''}`}
+                        onClick={() => { setCurrentView('queue'); setMobileSidebarOpen(false); }}
+                    >
+                        <span className="menu-icon">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                        </span>
+                        {!sidebarCollapsed && <span>Fila de Tarefas</span>}
+                    </button>
+
+                    {/* Métricas do Sistema */}
+                    <button 
+                        className={`menu-item ${currentView === 'analytics' ? 'active' : ''}`}
+                        onClick={() => { setCurrentView('analytics'); setMobileSidebarOpen(false); }}
+                    >
+                        <span className="menu-icon">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                        </span>
+                        {!sidebarCollapsed && <span>Métricas do Sistema</span>}
+                    </button>
+
+                    {/* Documentação */}
+                    <button 
+                        className={`menu-item ${currentView === 'docs' ? 'active' : ''}`}
+                        onClick={() => { setCurrentView('docs'); setMobileSidebarOpen(false); }}
+                    >
+                        <span className="menu-icon">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5v-15z"/></svg>
+                        </span>
+                        {!sidebarCollapsed && <span>Documentação</span>}
+                    </button>
+                </nav>
+
+                {authEnabled && onLogout && (
+                    <div className="sidebar-footer">
+                        <button className="menu-item logout-item" onClick={onLogout}>
+                            <span className="menu-icon">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                            </span>
+                            {!sidebarCollapsed && <span>Sair</span>}
+                        </button>
                     </div>
                 )}
-                <Tabs
-                    isBox
-                    activeKey={currentGroup}
-                    onSelect={(_, k) => switchGroup(k as string)}
-                >{groupTabs}</Tabs>
-            </OptionalCardBody>
-        </OptionalCard>
+            </aside>
+
+            {/* Main Content Area */}
+            <main className="app-content">
+                {currentView === 'queue' && (
+                    <>
+                        {/* Center Colored Logo in Hero Banner */}
+                        <div className="hero-banner glass-panel">
+                            <div className="hero-content">
+                                <div className="hero-logo-wrapper">
+                                    <img src="/lipai_01_cor.png" alt="LIPAI Logo" className="hero-logo" />
+                                </div>
+                                <div className="hero-text">
+                                    <h2>LIPAI</h2>
+                                    <p>Laboratório Interdisciplinar de Processamento e Análise de Imagens</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {children}
+                        
+                        <div className="groups-container">
+                            <div className="groups-nav-tabs-wrapper glass-panel">
+                                {Object.keys(groups).map((groupName) => {
+                                    const isActive = currentGroup === groupName;
+                                    const count = Object.values(tasks).filter((t) => t.group === groupName).length;
+                                    return (
+                                        <button
+                                            key={groupName}
+                                            className={`group-nav-tab ${isActive ? 'active' : ''}`}
+                                            onClick={() => switchGroup(groupName)}
+                                        >
+                                            <span className="group-nav-name">{groupName}</span>
+                                            {count > 0 && <span className="group-nav-count">{count}</span>}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="group-content-area">
+                                {groups[currentGroup] && <PueueGroupTable key={currentGroup} group={currentGroup} hash={hash} />}
+                            </div>
+                        </div>
+                    </>
+                )}
+                {currentView === 'analytics' && <AnalyticsView />}
+                {currentView === 'docs' && <DocsView />}
+            </main>
+        </div>
+
         <AlertGroup isToast key='alerts'>
         {
             Object.entries(alerts).map(([key, x]) => key == 'counter' ?
-                <></> :
+                <React.Fragment key={key}></React.Fragment> :
                 <Alert key={key} variant={x.variant as any} title={x.title} timeout={5000}
                     style={{whiteSpace: 'pre-wrap'}}
                     onTimeout={currentContext.removeAlert.bind(null, key)}
@@ -606,5 +1072,5 @@ export const PueueView = ({ followGlobalDark, children } : { followGlobalDark : 
         </AlertGroup>
     </PueueContextProvider>
     );
-};
+}
 
