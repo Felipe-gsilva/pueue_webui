@@ -77,22 +77,28 @@ If you plan to self-host this dashboard and access it securely through a VPN:
 
 ## Features
 
-1. **Sleek Sidebar Layout**: Left sidebar navigation to switch between task queue management and system metrics.
-2. **Real-time System Monitor (Analytics)**: Modular dashboard displaying:
-   - **CPU**: Overall percentage gauge and individual core tracks.
-   - **RAM**: Memory utilization progress indicator (used vs total).
-   - **GPU & VRAM**: Direct monitoring of NVIDIA cards (VRAM, usage, temperatures) using `nvidia-smi`.
-   - **Temperatures**: Dynamic color-shifting gauges for CPU package and thermals.
-   - **Top Processes**: Filterable list of the top 10 CPU-consuming processes.
-3. **Add/kill/remove/restart tasks easily**: Clean dedicated task creation modal.
-4. **Monitor realtime states of tasks**: Follow log changes and trace execution states.
+1. **Sleek Sidebar Navigation**: Left sidebar navigation to switch seamlessly between Task Queue Management, System Metrics, and Documentation.
+2. **Real-time System Monitor (Analytics)**:
+   - **Dynamic `nvtop`-like Time-Series Chart**: Custom responsive SVG chart plotting CPU, RAM, GPU, and VRAM utilization over time. Features interactive metric toggles (to show/hide lines) and glassmorphic hover tooltips.
+   - **GPU & VRAM Tracking**: Direct monitoring of NVIDIA cards (VRAM, usage, temperatures) using `nvidia-smi`.
+   - **Resizable & Sortable Process Table**: A clean table displaying PIDs, Names, CPU, Memory, GPU Core Util, and VRAM. Supports interactive header sorting (asc/desc indicators) and draggable column resizing.
+3. **Glassmorphic Task Queue**:
+   - **Custom Groups Navigation**: Glassmorphic group tab bar displaying active groups with dynamic badges showing total task count.
+   - **Group Info Header**: Symmetrical header showing group status (Running/Paused) and summaries of task states (Total, Executando, Fila, Sucesso, Falhas).
+   - **Horizontal Scrollable Card List**: A flexrow-based task card list featuring scroll snap alignments and a custom scrollbar.
+   - **Card Controls**: Inline start, pause, kill, remove, and edit buttons directly on individual cards.
+   - **Visual feedback**: Active glowing borders to indicate focus on the selected logs/envs panel and smooth size change animations.
+4. **Console Logs & Envs Viewer**:
+   - **Large Log Support**: Support for reading logs up to 50MB and 1,000,000 lines on-demand. Reads the last 1MB by default to keep the UI fast, with a warning bar to load the full log.
+   - **Interactive Log Search (Ctrl+F)**: Toggled log search panel with autofocus, real-time matching highlights, Next/Prev navigation buttons, match counters, auto scroll-into-view, and keyboard shortcuts (`Enter` / `Shift+Enter` / `Esc`).
+   - **State Sync**: Real-time log streaming updates and automated log resets on task restarts.
+   - **Copy to Clipboard**: Quick actions to copy logs or formatted environment variables.
+5. **Action Confirmations**:
+   - Mandatory glassmorphic confirmation modal overlays for destructive actions (Parar, Remover, Limpar Fila) to prevent accidental clicks.
 
 <img width="450" height="250" alt="image" src="https://github.com/user-attachments/assets/a028e3fd-beea-4aaa-90ae-8fd347ac8c27" />
 <img width="450" height="250" alt="image" src="https://github.com/user-attachments/assets/7dff9d48-d6f7-44f9-8112-6c7bd9b897ec" />
 
-
-3. Follow the log changes
-4. Edit spawn options of existing tasks
 
 <img width="450" height="250" alt="image" src="https://github.com/user-attachments/assets/1e445baf-5f48-4b30-af4f-ec945f2a4269" />
 <img width="450" height="250" alt="image" src="https://github.com/user-attachments/assets/17b0641c-2d13-4350-b389-69c99b52857b" />
