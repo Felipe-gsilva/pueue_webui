@@ -51,12 +51,34 @@ import {
 } from '../utils';
 
 
-const LogView = ({id}) => {
-    const context = React.useContext(pueueContext);
-    const [log, setLog] = React.useState<string>('');
-    const [follow, setFollow] = React.useState<boolean>(true);
-    const [isCollapsed, setIsCollapsed] = React.useState<boolean>(true);
+const LogView = ({ id } : { id : string }) => {
+    const [ log, setLog ] = React.useState<string>('');
+    const [ follow, setFollow ] = React.useState<boolean>(true);
+    const [ isCollapsed, setIsCollapsed ] = React.useState<boolean>(false);
+    const [ logDetails, setLogDetails ] = React.useState<{
+        startSize: number;
+        endSize: number;
+        isTruncated: boolean;
+        loadedFull: boolean;
+    }>({ startSize: 0, endSize: 0, isTruncated: false, loadedFull: false });
+
+    // Search state
+    const [ showSearch, setShowSearch ] = React.useState<boolean>(false);
+    const [ searchQuery, setSearchQuery ] = React.useState<string>('');
+    const [ currentMatchIndex, setCurrentMatchIndex ] = React.useState<number>(0);
+
     const elemRef = React.useRef<HTMLDivElement>(null);
+    const searchInputRef = React.useRef<HTMLInputElement>(null);
+    const context = React.useContext(pueueContext);
+
+    const formatBytes = (bytes: number, decimals = 1) => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    };
 
     const appendLog = (e : Event) => {
         const data = (e as PueueMessageEvent).data;
@@ -74,9 +96,18 @@ const LogView = ({id}) => {
 
     React.useEffect(() => {
         setLog('');
+        setLogDetails({ startSize: 0, endSize: 0, isTruncated: false, loadedFull: false });
         pueueManager.observer.addEventListener('onLogUpdated', appendLog);
         pueueManager.pueue_log_subscription(id, true)
-            .then((data) => pueueManager.observer.dispatchEvent(new PueueMessageEvent('onLogUpdated', data)));
+            .then((data) => {
+                setLogDetails({
+                    startSize: data[1],
+                    endSize: data[2],
+                    isTruncated: data[1] > 0,
+                    loadedFull: false
+                });
+                pueueManager.observer.dispatchEvent(new PueueMessageEvent('onLogUpdated', data));
+            });
         return () => {
             pueueManager.pueue_log_subscription(id, false);
             pueueManager.observer.removeEventListener('onLogUpdated', appendLog);
@@ -89,11 +120,111 @@ const LogView = ({id}) => {
         }
     }, [log]);
 
+    // Scroll to active match
+    React.useEffect(() => {
+        if (!searchQuery || !elemRef.current) return;
+        const activeEl = elemRef.current.querySelector('.log-search-match.active');
+        if (activeEl) {
+            activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }, [currentMatchIndex, searchQuery]);
+
+    const escapeRegExp = (string: string) => {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    };
+
+    const totalMatches = React.useMemo(() => {
+        if (!searchQuery) return 0;
+        try {
+            const matches = log.match(new RegExp(escapeRegExp(searchQuery), 'gi'));
+            return matches ? matches.length : 0;
+        } catch (e) {
+            return 0;
+        }
+    }, [log, searchQuery]);
+
+    const handlePrevMatch = () => {
+        if (totalMatches === 0) return;
+        setCurrentMatchIndex((prev) => (prev - 1 + totalMatches) % totalMatches);
+    };
+
+    const handleNextMatch = () => {
+        if (totalMatches === 0) return;
+        setCurrentMatchIndex((prev) => (prev + 1) % totalMatches);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (e.shiftKey) {
+                handlePrevMatch();
+            } else {
+                handleNextMatch();
+            }
+        } else if (e.key === 'Escape') {
+            setShowSearch(false);
+            setSearchQuery('');
+            setCurrentMatchIndex(0);
+        }
+    };
+
+    const getHighlightedLog = (text: string, search: string) => {
+        if (!search) return text;
+        
+        let parts;
+        try {
+            parts = text.split(new RegExp(`(${escapeRegExp(search)})`, 'gi'));
+        } catch (e) {
+            return text;
+        }
+
+        let matchCounter = 0;
+        return parts.map((part, index) => {
+            if (part.toLowerCase() === search.toLowerCase()) {
+                const isCurrent = matchCounter === currentMatchIndex;
+                matchCounter++;
+                return (
+                    <mark 
+                        key={index} 
+                        className={`log-search-match ${isCurrent ? 'active' : ''}`}
+                    >
+                        {part}
+                    </mark>
+                );
+            }
+            return part;
+        });
+    };
+
+    const loadFullLog = () => {
+        // Load up to 50MB (50,000,000 bytes) and 1,000,000 lines
+        pueueManager.pueue_log_subscription(id, true, { bytes: 50000000, lines: 1000000 })
+            .then((data) => {
+                setLog(''); // Clear current log to prevent duplicate content
+                setLogDetails({
+                    startSize: data[1],
+                    endSize: data[2],
+                    isTruncated: data[1] > 0,
+                    loadedFull: true
+                });
+                pueueManager.observer.dispatchEvent(new PueueMessageEvent('onLogUpdated', data));
+            });
+    };
+
     const refresh = () => {
         setLog('');
         pueueManager.pueue_log_subscription(id, false);
-        pueueManager.pueue_log_subscription(id, true)
-            .then((data) => pueueManager.observer.dispatchEvent(new PueueMessageEvent('onLogUpdated', data)));
+        const options = logDetails.loadedFull ? { bytes: 50000000, lines: 1000000 } : {};
+        pueueManager.pueue_log_subscription(id, true, options)
+            .then((data) => {
+                setLogDetails({
+                    startSize: data[1],
+                    endSize: data[2],
+                    isTruncated: data[1] > 0,
+                    loadedFull: logDetails.loadedFull
+                });
+                pueueManager.observer.dispatchEvent(new PueueMessageEvent('onLogUpdated', data));
+            });
     };
 
     const handleCopy = () => {
@@ -115,6 +246,20 @@ const LogView = ({id}) => {
                     <Button variant='plain' size="sm" onClick={refresh} title="Recarregar Logs">
                         <RedoIcon style={{marginRight: '6px', display: 'inline-block', verticalAlign: 'middle'}}/>
                         Recarregar
+                    </Button>
+                    <Button variant='plain' size="sm" onClick={() => {
+                        setShowSearch((s) => {
+                            if (!s) {
+                                setTimeout(() => searchInputRef.current?.focus(), 50);
+                            } else {
+                                setSearchQuery('');
+                                setCurrentMatchIndex(0);
+                            }
+                            return !s;
+                        });
+                    }} className={showSearch ? "follow-active" : ""}>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block', verticalAlign: 'middle'}}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        Pesquisar
                     </Button>
                     <Button variant='plain' size="sm" onClick={() => setFollow((b) => !b)} className={follow ? "follow-active" : ""}>
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block', verticalAlign: 'middle'}}>
@@ -142,8 +287,75 @@ const LogView = ({id}) => {
                     </Button>
                 </div>
             </div>
+
+            {showSearch && (
+                <div className="log-search-bar glass-panel animate-fade-in">
+                    <div className="log-search-input-wrapper">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" className="search-input-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            placeholder="Pesquisar nos logs (Enter para próximo, Esc para fechar)..."
+                            value={searchQuery}
+                            onChange={(e) => {
+                                setSearchQuery(e.target.value);
+                                setCurrentMatchIndex(0);
+                            }}
+                            onKeyDown={handleKeyDown}
+                            className="log-search-input"
+                        />
+                        {searchQuery && (
+                            <span className="log-search-matches-count">
+                                {totalMatches > 0 ? `${currentMatchIndex + 1}/${totalMatches}` : 'Sem resultados'}
+                            </span>
+                        )}
+                    </div>
+                    <div className="log-search-nav-buttons">
+                        <button 
+                            onClick={handlePrevMatch} 
+                            disabled={totalMatches === 0} 
+                            title="Resultado anterior"
+                            className="log-search-nav-btn"
+                        >
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 15 12 9 6 15"/></svg>
+                        </button>
+                        <button 
+                            onClick={handleNextMatch} 
+                            disabled={totalMatches === 0} 
+                            title="Próximo resultado"
+                            className="log-search-nav-btn"
+                        >
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                        <button 
+                            onClick={() => {
+                                setShowSearch(false);
+                                setSearchQuery('');
+                                setCurrentMatchIndex(0);
+                            }} 
+                            title="Fechar pesquisa"
+                            className="log-search-nav-btn close-btn"
+                        >
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                </div>
+            )}
+            
+            {logDetails.isTruncated && !logDetails.loadedFull && (
+                <div className="log-truncated-warning glass-panel">
+                    <span className="warning-icon">⚠️</span>
+                    <span className="warning-text">
+                        Exibindo os últimos {formatBytes(logDetails.endSize - logDetails.startSize)} do log (Tamanho total: {formatBytes(logDetails.endSize)}).
+                    </span>
+                    <Button variant="link" size="sm" onClick={loadFullLog} className="load-full-log-btn">
+                        Carregar Log Completo (Até 50MB)
+                    </Button>
+                </div>
+            )}
+
             <div ref={elemRef} className={`log-view ${isCollapsed ? 'collapsed' : 'expanded'}`}>
-                <pre>{log || '(Sem registros no log)'}</pre>
+                <pre>{getHighlightedLog(log, searchQuery) || '(Sem registros no log)'}</pre>
             </div>
         </div>
     );
@@ -276,10 +488,40 @@ const PueueTaskCard = ({
     const dateEnd = task.end ? new Date(Date.parse(task.end)) : null;
 
     const handleRestart = () => pueueManager.pueue('restart', {in_place: true}, [id]).then(alertDone).then(context.updateStatus);
-    const handleKill = () => pueueManager.pueue('kill', {}, [id]).then(alertDone).then(context.updateStatus);
-    const handlePause = () => pueueManager.pueue('pause', {}, [id]).then(alertDone).then(context.updateStatus);
+    const handleKill = () => {
+        context.showConfirm({
+            title: "Parar Tarefa",
+            message: `Tem certeza que deseja interromper a execução da tarefa #${id}?`,
+            confirmText: "Parar Execução",
+            cancelText: "Cancelar",
+            onConfirm: () => {
+                pueueManager.pueue('kill', {}, [id]).then(alertDone).then(context.updateStatus);
+            }
+        });
+    };
+    const handlePause = () => {
+        context.showConfirm({
+            title: "Pausar Tarefa",
+            message: `Tem certeza que deseja pausar a tarefa #${id}?`,
+            confirmText: "Pausar",
+            cancelText: "Cancelar",
+            onConfirm: () => {
+                pueueManager.pueue('pause', {}, [id]).then(alertDone).then(context.updateStatus);
+            }
+        });
+    };
     const handleStart = () => pueueManager.pueue('start', {}, [id]).then(alertDone).then(context.updateStatus);
-    const handleRemove = () => pueueManager.pueue('remove', {}, [id]).then(alertDone).then(context.updateStatus);
+    const handleRemove = () => {
+        context.showConfirm({
+            title: "Remover Tarefa",
+            message: `Tem certeza que deseja remover a tarefa #${id}?`,
+            confirmText: "Remover",
+            cancelText: "Cancelar",
+            onConfirm: () => {
+                pueueManager.pueue('remove', {}, [id]).then(alertDone).then(context.updateStatus);
+            }
+        });
+    };
     
     const handleSaveEdit = async () => {
         await pueueManager.pueue('restart', {in_place: true, stashed: true}, [id]).then(alertDone);
@@ -647,9 +889,17 @@ const PueueGroupTable = ({ group, hash } : { group : string, hash : [string, str
                 <div className="group-actions-section">
                     <Button 
                         variant="secondary" 
-                        onClick={async () => {
-                            await pueueManager.pueue('clean', {group: group}).then(alertDone);
-                            context.updateStatus();
+                        onClick={() => {
+                            context.showConfirm({
+                                title: "Limpar Fila",
+                                message: `Tem certeza que deseja limpar todas as tarefas concluídas (com sucesso ou falhadas) do grupo "${group}"?`,
+                                confirmText: "Limpar Fila",
+                                cancelText: "Cancelar",
+                                onConfirm: async () => {
+                                    await pueueManager.pueue('clean', {group: group}).then(alertDone);
+                                    context.updateStatus();
+                                }
+                            });
                         }}
                     >
                         Limpar Fila
@@ -810,12 +1060,20 @@ export const PueueView = ({
     const [ mobileSidebarOpen, setMobileSidebarOpen ] = React.useState<boolean>(false);
     const [ sidebarCollapsed, setSidebarCollapsed ] = React.useState<boolean>(false);
     const [ groupsSubmenuOpen, setGroupsSubmenuOpen ] = React.useState<boolean>(true);
+    const [ confirmAction, setConfirmAction ] = React.useState<{
+        title: string;
+        message: string;
+        confirmText: string;
+        cancelText: string;
+        onConfirm: () => void;
+    } | null>(null);
 
     const currentContext = new PueueContext();
     currentContext.tasks = structuredClone(tasks);
     currentContext.groups = structuredClone(groups);
     currentContext.cwd = meta.cwd;
     currentContext.sm = sm;
+    currentContext.showConfirm = (state) => setConfirmAction(state);
 
     currentContext.updateStatus = () => {
         Promise.all([
@@ -1070,6 +1328,27 @@ export const PueueView = ({
                 >{x.body}</Alert>)
         }
         </AlertGroup>
+
+        {confirmAction && (
+            <div className="confirm-modal-overlay">
+                <div className="confirm-modal-box glass-panel">
+                    <div className="confirm-modal-header">
+                        <h3>{confirmAction.title}</h3>
+                    </div>
+                    <div className="confirm-modal-body">
+                        <p>{confirmAction.message}</p>
+                    </div>
+                    <div className="confirm-modal-footer">
+                        <Button variant="secondary" onClick={() => setConfirmAction(null)} className="cancel-btn">
+                            {confirmAction.cancelText}
+                        </Button>
+                        <Button variant="danger" onClick={() => { confirmAction.onConfirm(); setConfirmAction(null); }} className="confirm-btn">
+                            {confirmAction.confirmText}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        )}
     </PueueContextProvider>
     );
 }

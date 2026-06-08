@@ -46,6 +46,7 @@ export class PueueContext {
     updateStatus : ()=>void = ()=>{};
     addAlert: (body : string, title? : string, variant? : string) => void = ()=>{};
     removeAlert: (key : string) => void = ()=>{};
+    showConfirm: (state: { title: string, message: string, confirmText: string, cancelText: string, onConfirm: () => void }) => void = ()=>{};
 
     storeMeta() {
         return pueueManager.pueue_webui_meta({

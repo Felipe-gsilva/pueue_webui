@@ -192,12 +192,13 @@ class LogUpdatedHandler(watchdog.events.FileSystemEventHandler):
         self.last_call = time.time()
 
 @jsonrpc_method
-def pueue_log_subscription(taskId, addOrDel, options):
+def pueue_log_subscription(taskId, addOrDel, options={}):
     path = (logs_path / f'{taskId}.log')
 
     if addOrDel:
-        max_lines = int(options.get('lines', 1000))
-        max_bytes = int(options.get('bytes', 500000))
+        # Default: 1MB max bytes, 20000 max lines, capped at 50MB and 1M lines
+        max_lines = min(1000000, int(options.get('lines', 20000)))
+        max_bytes = min(50000000, int(options.get('bytes', 1000000)))
 
         start_size = 0
         end_size = 0
@@ -219,7 +220,8 @@ def pueue_log_subscription(taskId, addOrDel, options):
         return [path.stem, start_size, end_size, content]
     else:
         with log_subscriber_lock:
-            del log_subscriber[taskId]
+            if taskId in log_subscriber:
+                del log_subscriber[taskId]
         return True
 
 
