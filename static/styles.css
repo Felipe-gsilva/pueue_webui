@@ -2674,3 +2674,152 @@ body::before {
 }
 
 
+/* Metrics History Chart Styling */
+.history-chart-card {
+  grid-column: 1 / -1;
+  padding: 20px !important;
+}
+
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.chart-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.chart-filters {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.chart-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.chart-filter-label:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.chart-filter-label input {
+  cursor: pointer;
+}
+
+/* Colors for active filters */
+.chart-filter-label.cpu-filter {
+  color: #6366f1;
+}
+.chart-filter-label.ram-filter {
+  color: #06b6d4;
+}
+.chart-filter-label.gpu-filter {
+  color: #10b981;
+}
+.chart-filter-label.vram-filter {
+  color: #f59e0b;
+}
+
+/* SVG Chart Elements */
+.svg-chart-container {
+  position: relative;
+  width: 100%;
+}
+
+.chart-svg {
+  width: 100%;
+  height: 200px;
+  display: block;
+  overflow: visible;
+}
+
+.grid-line {
+  stroke: rgba(255, 255, 255, 0.05);
+  stroke-width: 1;
+}
+
+.axis-text {
+  font-size: 10px;
+  fill: var(--text-secondary);
+  opacity: 0.6;
+  font-family: var(--font-sans);
+}
+
+.chart-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke-dasharray 0.3s ease;
+}
+
+/* Custom Tooltip */
+.chart-tooltip-wrapper {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 10px 14px;
+  border-radius: 8px;
+  min-width: 140px;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tooltip-time {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+}
+
+.tooltip-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.tooltip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tooltip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.tooltip-val {
+  font-family: var(--font-mono);
+}

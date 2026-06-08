@@ -3,12 +3,294 @@ import { Card, CardBody, CardTitle, TextInput, Button } from '@patternfly/react-
 import { SearchIcon, SyncIcon } from '@patternfly/react-icons';
 import { pueueManager } from '../pueue-manager';
 
+const MetricsHistoryChart = ({ history } : { history: any[] }) => {
+    const [filters, setFilters] = React.useState({
+        cpu: true,
+        ram: true,
+        gpu: true,
+        vram: true
+    });
+    const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
+
+    const toggleFilter = (key: 'cpu' | 'ram' | 'gpu' | 'vram') => {
+        setFilters(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    if (history.length === 0) {
+        return (
+            <Card className="dashboard-card glass-panel history-chart-card">
+                <div style={{ padding: '40px', textAlignment: 'center', color: 'var(--text-secondary)' }}>
+                    Aguardando dados históricos...
+                </div>
+            </Card>
+        );
+    }
+
+    const W = 600;
+    const H = 200;
+    const paddingLeft = 40;
+    const paddingRight = 20;
+    const paddingTop = 15;
+    const paddingBottom = 25;
+
+    const plotW = W - paddingLeft - paddingRight;
+    const plotH = H - paddingTop - paddingBottom;
+    const L = history.length;
+
+    const getX = (idx: number) => paddingLeft + (idx / Math.max(1, L - 1)) * plotW;
+    const getY = (val: number) => (paddingTop + plotH) - (val / 100) * plotH;
+
+    const getPathData = (key: string) => {
+        if (L < 2) return '';
+        const points = history.map((d, idx) => {
+            const x = getX(idx);
+            const val = d[key] !== undefined ? d[key] : 0;
+            const y = getY(val);
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+        });
+        return `M ${points.join(' L ')}`;
+    };
+
+    const getAreaPathData = (key: string) => {
+        const linePath = getPathData(key);
+        if (!linePath) return '';
+        const firstX = getX(0);
+        const lastX = getX(L - 1);
+        const baseY = paddingTop + plotH;
+        return `${linePath} L ${lastX.toFixed(1)},${baseY.toFixed(1)} L ${firstX.toFixed(1)},${baseY.toFixed(1)} Z`;
+    };
+
+    const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+        const svg = e.currentTarget;
+        const rect = svg.getBoundingClientRect();
+        const clientX = e.clientX;
+        const localX = clientX - rect.left;
+        
+        // Map localX back to history index
+        const pctX = (localX - paddingLeft) / plotW;
+        const idx = Math.min(L - 1, Math.max(0, Math.round(pctX * (L - 1))));
+        setHoveredIndex(idx);
+    };
+
+    const handleMouseLeave = () => {
+        setHoveredIndex(null);
+    };
+
+    const hoveredData = hoveredIndex !== null ? history[hoveredIndex] : null;
+
+    const gridLevels = [0, 25, 50, 75, 100];
+
+    return (
+        <Card className="dashboard-card glass-panel history-chart-card">
+            <div className="chart-header">
+                <h3>Histórico de Recursos</h3>
+                <div className="chart-filters">
+                    <label className={`chart-filter-label cpu-filter ${filters.cpu ? 'active' : ''}`}>
+                        <input type="checkbox" checked={filters.cpu} onChange={() => toggleFilter('cpu')} />
+                        <span>CPU</span>
+                    </label>
+                    <label className={`chart-filter-label ram-filter ${filters.ram ? 'active' : ''}`}>
+                        <input type="checkbox" checked={filters.ram} onChange={() => toggleFilter('ram')} />
+                        <span>RAM</span>
+                    </label>
+                    <label className={`chart-filter-label gpu-filter ${filters.gpu ? 'active' : ''}`}>
+                        <input type="checkbox" checked={filters.gpu} onChange={() => toggleFilter('gpu')} />
+                        <span>GPU</span>
+                    </label>
+                    <label className={`chart-filter-label vram-filter ${filters.vram ? 'active' : ''}`}>
+                        <input type="checkbox" checked={filters.vram} onChange={() => toggleFilter('vram')} />
+                        <span>VRAM</span>
+                    </label>
+                </div>
+            </div>
+
+            <div className="svg-chart-container">
+                <svg 
+                    className="chart-svg" 
+                    viewBox={`0 0 ${W} ${H}`}
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeave}
+                >
+                    <defs>
+                        <linearGradient id="cpu-grad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25"/>
+                            <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
+                        </linearGradient>
+                        <linearGradient id="ram-grad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.25"/>
+                            <stop offset="100%" stopColor="#06b6d4" stopOpacity="0"/>
+                        </linearGradient>
+                        <linearGradient id="gpu-grad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#10b981" stopOpacity="0.25"/>
+                            <stop offset="100%" stopColor="#10b981" stopOpacity="0"/>
+                        </linearGradient>
+                        <linearGradient id="vram-grad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.25"/>
+                            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0"/>
+                        </linearGradient>
+                    </defs>
+
+                    {/* Grid Lines & Labels */}
+                    {gridLevels.map(level => {
+                        const y = getY(level);
+                        return (
+                            <g key={level}>
+                                <line 
+                                    className="grid-line"
+                                    x1={paddingLeft} 
+                                    y1={y} 
+                                    x2={W - paddingRight} 
+                                    y2={y} 
+                                />
+                                <text 
+                                    className="axis-text" 
+                                    x={paddingLeft - 8} 
+                                    y={y + 3} 
+                                    textAnchor="end"
+                                >
+                                    {level}%
+                                </text>
+                            </g>
+                        );
+                    })}
+
+                    {/* Time labels at bottom (first and last) */}
+                    {L > 1 && (
+                        <>
+                            <text className="axis-text" x={paddingLeft} y={H - 5} textAnchor="start">
+                                {new Date(history[0].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </text>
+                            <text className="axis-text" x={W - paddingRight} y={H - 5} textAnchor="end">
+                                {new Date(history[L - 1].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </text>
+                        </>
+                    )}
+
+                    {/* Plot Filled Areas */}
+                    {filters.cpu && <path d={getAreaPathData('cpu')} fill="url(#cpu-grad)" />}
+                    {filters.ram && <path d={getAreaPathData('ram')} fill="url(#ram-grad)" />}
+                    {filters.gpu && <path d={getAreaPathData('gpu')} fill="url(#gpu-grad)" />}
+                    {filters.vram && <path d={getAreaPathData('vram')} fill="url(#vram-grad)" />}
+
+                    {/* Plot Lines */}
+                    {filters.cpu && <path className="chart-line" d={getPathData('cpu')} stroke="#6366f1" />}
+                    {filters.ram && <path className="chart-line" d={getPathData('ram')} stroke="#06b6d4" />}
+                    {filters.gpu && <path className="chart-line" d={getPathData('gpu')} stroke="#10b981" />}
+                    {filters.vram && <path className="chart-line" d={getPathData('vram')} stroke="#f59e0b" />}
+
+                    {/* Hover vertical bar & dots */}
+                    {hoveredIndex !== null && (
+                        <g>
+                            <line 
+                                x1={getX(hoveredIndex)} 
+                                y1={paddingTop} 
+                                x2={getX(hoveredIndex)} 
+                                y2={paddingTop + plotH} 
+                                stroke="rgba(255,255,255,0.25)" 
+                                strokeWidth="1"
+                                strokeDasharray="3 3"
+                            />
+                            {filters.cpu && (
+                                <circle 
+                                    cx={getX(hoveredIndex)} 
+                                    cy={getY(history[hoveredIndex].cpu)} 
+                                    r="4" 
+                                    fill="#6366f1" 
+                                    stroke="var(--bg-primary)" 
+                                    strokeWidth="1.5"
+                                />
+                            )}
+                            {filters.ram && (
+                                <circle 
+                                    cx={getX(hoveredIndex)} 
+                                    cy={getY(history[hoveredIndex].ram)} 
+                                    r="4" 
+                                    fill="#06b6d4" 
+                                    stroke="var(--bg-primary)" 
+                                    strokeWidth="1.5"
+                                />
+                            )}
+                            {filters.gpu && (
+                                <circle 
+                                    cx={getX(hoveredIndex)} 
+                                    cy={getY(history[hoveredIndex].gpu)} 
+                                    r="4" 
+                                    fill="#10b981" 
+                                    stroke="var(--bg-primary)" 
+                                    strokeWidth="1.5"
+                                />
+                            )}
+                            {filters.vram && (
+                                <circle 
+                                    cx={getX(hoveredIndex)} 
+                                    cy={getY(history[hoveredIndex].vram)} 
+                                    r="4" 
+                                    fill="#f59e0b" 
+                                    stroke="var(--bg-primary)" 
+                                    strokeWidth="1.5"
+                                />
+                            )}
+                        </g>
+                    )}
+                </svg>
+
+                {/* Floating Tooltip */}
+                {hoveredData && (
+                    <div className="chart-tooltip-wrapper">
+                        <div className="tooltip-time">
+                            {new Date(hoveredData.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </div>
+                        {filters.cpu && (
+                            <div className="tooltip-item" style={{ color: '#6366f1' }}>
+                                <div className="tooltip-label">
+                                    <span className="tooltip-dot" style={{ backgroundColor: '#6366f1' }}></span>
+                                    <span>CPU:</span>
+                                </div>
+                                <span className="tooltip-val">{hoveredData.cpu.toFixed(0)}%</span>
+                            </div>
+                        )}
+                        {filters.ram && (
+                            <div className="tooltip-item" style={{ color: '#06b6d4' }}>
+                                <div className="tooltip-label">
+                                    <span className="tooltip-dot" style={{ backgroundColor: '#06b6d4' }}></span>
+                                    <span>RAM:</span>
+                                </div>
+                                <span className="tooltip-val">{hoveredData.ram.toFixed(0)}%</span>
+                            </div>
+                        )}
+                        {filters.gpu && (
+                            <div className="tooltip-item" style={{ color: '#10b981' }}>
+                                <div className="tooltip-label">
+                                    <span className="tooltip-dot" style={{ backgroundColor: '#10b981' }}></span>
+                                    <span>GPU:</span>
+                                </div>
+                                <span className="tooltip-val">{hoveredData.gpu.toFixed(0)}%</span>
+                            </div>
+                        )}
+                        {filters.vram && (
+                            <div className="tooltip-item" style={{ color: '#f59e0b' }}>
+                                <div className="tooltip-label">
+                                    <span className="tooltip-dot" style={{ backgroundColor: '#f59e0b' }}></span>
+                                    <span>VRAM:</span>
+                                </div>
+                                <span className="tooltip-val">{hoveredData.vram.toFixed(0)}%</span>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        </Card>
+    );
+};
+
 export const AnalyticsView: React.FC = () => {
     const [stats, setStats] = React.useState<any>(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState('');
     const [procSearch, setProcSearch] = React.useState('');
     const [refreshInterval, setRefreshInterval] = React.useState(1500); // 1.5 seconds default
+
+    const [history, setHistory] = React.useState<any[]>([]);
 
     const [sortBy, setSortBy] = React.useState<'pid' | 'name' | 'cpu' | 'memory' | 'gpu_util' | 'gpu_vram'>('cpu');
     const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
@@ -60,6 +342,20 @@ export const AnalyticsView: React.FC = () => {
             if (data) {
                 setStats(data);
                 setError('');
+                setHistory(prev => {
+                    const newPoint = {
+                        timestamp: Date.now(),
+                        cpu: data.cpu.percent,
+                        ram: data.memory.percent,
+                        gpu: data.gpus.length > 0 ? data.gpus[0].utilization : 0,
+                        vram: data.gpus.length > 0 ? (data.gpus[0].memory_used / data.gpus[0].memory_total * 100) : 0
+                    };
+                    const nextHistory = [...prev, newPoint];
+                    if (nextHistory.length > 40) {
+                        nextHistory.shift();
+                    }
+                    return nextHistory;
+                });
             }
         } catch (err) {
             console.error('Error fetching system stats:', err);
@@ -159,6 +455,7 @@ export const AnalyticsView: React.FC = () => {
             </div>
 
             <div className="analytics-grid">
+                <MetricsHistoryChart history={history} />
                 {/* CPU Usage Card */}
                 <Card className="dashboard-card glass-panel">
                     <CardTitle className="card-header-styled">CPU</CardTitle>
