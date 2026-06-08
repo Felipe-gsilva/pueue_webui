@@ -87,24 +87,18 @@ If you plan to self-host this dashboard and access it securely through a VPN:
 3. **Add/kill/remove/restart tasks easily**: Clean dedicated task creation modal.
 4. **Monitor realtime states of tasks**: Follow log changes and trace execution states.
 
-![](docs/pic1.png)
+<img width="450" height="250" alt="image" src="https://github.com/user-attachments/assets/a028e3fd-beea-4aaa-90ae-8fd347ac8c27" />
+<img width="450" height="250" alt="image" src="https://github.com/user-attachments/assets/7dff9d48-d6f7-44f9-8112-6c7bd9b897ec" />
+
 
 3. Follow the log changes
 4. Edit spawn options of existing tasks
 
-![](docs/pic2.png)
+<img width="450" height="250" alt="image" src="https://github.com/user-attachments/assets/1e445baf-5f48-4b30-af4f-ec945f2a4269" />
+<img width="450" height="250" alt="image" src="https://github.com/user-attachments/assets/17b0641c-2d13-4350-b389-69c99b52857b" />
 
-## Disclaimer
 
-The project is still in a very early stage and is extremely unstable. Tests are very coarse, so please aware that you are supposed to be mindful of your own data and system when using this project, and that the author of this project is not responsible for any of your data lost.
-
-## FAQs
-
-## Todos
-
-- [ ] Minimize Static Assets
-- [ ] Responsive Adaptation
-- [ ] Task Filtering and Sorting
-- [ ] Redhat Cockpit Supports
-- [ ] Maybe rewrite the Python part into NodeJS?
+### Metrics Viewer 
+<img width="450" height="250" alt="image" src="https://github.com/user-attachments/assets/fadc9b0b-44ba-4cb1-9400-7dd86abd7dff" />
+<img width="450" height="250" alt="image" src="https://github.com/user-attachments/assets/a83ad3b9-d603-42ac-a977-e0f6c6c55ab3" />
 
