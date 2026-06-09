@@ -29,6 +29,8 @@ install_system_dep() {
 install_system_dep "curl" "curl" "curl"
 install_system_dep "python3 python3-venv" "python" "python3"
 install_system_dep "nodejs npm" "nodejs npm" "node"
+# também vou instalar thermald e já rodar no final
+install_system_dep "thermald"
 
 # 2. Configurar o PATH no .bashrc se necessário
 if [[ ":$PATH:" != *":$HOME/.cargo/bin:"* ]]; then
@@ -215,6 +217,11 @@ else
     pip install -r requirements.txt
     RUN_COMMAND="python3"
 fi
+
+# Rodando o thermald
+echo "🚀 Iniciando o Thermald..."
+sudo systemctl enable --now thermald.service
+sudo systemctl start thermald.service
 
 # 13. Rodando o código
 echo "🚀 Iniciando o Pueue WebUI..."
