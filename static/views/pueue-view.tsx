@@ -54,7 +54,7 @@ import {
 const LogView = ({ id } : { id : string }) => {
     const [ log, setLog ] = React.useState<string>('');
     const [ follow, setFollow ] = React.useState<boolean>(true);
-    const [ isCollapsed, setIsCollapsed ] = React.useState<boolean>(false);
+    const [ isCollapsed, setIsCollapsed ] = React.useState<boolean>(true);
     const [ logDetails, setLogDetails ] = React.useState<{
         startSize: number;
         endSize: number;
@@ -417,6 +417,92 @@ const getTaskStatusCategory = (task: PueueTask) => {
     return 'queued';
 };
 
+const extractTimesFromStatus = (status: any) => {
+    let start = '';
+    let end = '';
+    let enqueued = '';
+    
+    const traverse = (obj: any) => {
+        if (!obj || typeof obj !== 'object') return;
+        
+        if (obj.start) start = obj.start;
+        if (obj.end) end = obj.end;
+        if (obj.enqueued_at) enqueued = obj.enqueued_at;
+        
+        for (const key of Object.keys(obj)) {
+            traverse(obj[key]);
+        }
+    };
+    
+    traverse(status);
+    return { start, end, enqueued };
+};
+
+const getCleanStatusText = (status: any): string => {
+    if (!status) return 'Queued';
+    if (typeof status === 'object') {
+        const key = Object.keys(status)[0];
+        if (key === 'Done') {
+            const doneObj = status[key];
+            if (doneObj && typeof doneObj === 'object') {
+                if (doneObj.result) {
+                    if (typeof doneObj.result === 'object') {
+                        return Object.keys(doneObj.result)[0] || 'Done';
+                    }
+                    return String(doneObj.result);
+                }
+            }
+            return 'Done';
+        }
+        return key;
+    }
+    return String(status);
+};
+
+const getPortugueseStatusText = (status: any): string => {
+    const cleanText = getCleanStatusText(status);
+    switch (cleanText) {
+        case 'Running':
+            return 'Executando';
+        case 'Queued':
+            return 'Na Fila';
+        case 'Paused':
+            return 'Pausado';
+        case 'Stashed':
+            return 'Pausado (Stashed)';
+        case 'Success':
+            return 'Sucesso';
+        case 'Failed':
+            return 'Falhou';
+        case 'Killed':
+            return 'Interrompido';
+        case 'DependencyFailed':
+            return 'Dependência Falhou';
+        default:
+            return cleanText;
+    }
+};
+
+const formatDuration = (startStr: string, endStr: string, isRunning: boolean): string => {
+    if (!startStr) return '';
+    const start = new Date(Date.parse(startStr));
+    const end = endStr ? new Date(Date.parse(endStr)) : new Date();
+    
+    const diffMs = end.getTime() - start.getTime();
+    if (isNaN(diffMs) || diffMs < 0) return '00:00:00';
+    
+    const diffSecs = Math.floor(diffMs / 1000);
+    const hrs = Math.floor(diffSecs / 3600);
+    const mins = Math.floor((diffSecs % 3600) / 60);
+    const secs = diffSecs % 60;
+    
+    return [
+        hrs.toString().padStart(2, '0'),
+        mins.toString().padStart(2, '0'),
+        secs.toString().padStart(2, '0')
+    ].join(':');
+};
+
 const PueueTaskCard = ({ 
     id, 
     group, 
@@ -431,6 +517,9 @@ const PueueTaskCard = ({
     onToggleDetails : (id : string, tab : 'logs' | 'envs' | null) => void
 }) => {
     const [ isEditable, setIsEditable ] = React.useState<boolean>(false);
+    const [ showMetadata, setShowMetadata ] = React.useState<boolean>(false);
+    const [ canDrag, setCanDrag ] = React.useState<boolean>(false);
+    const [ elapsedTime, setElapsedTime ] = React.useState<string>('');
 
     const context = React.useContext(pueueContext);
     const task = context.tasks[id] || new PueueTask();
@@ -473,7 +562,7 @@ const PueueTaskCard = ({
     };
 
     const statusArray = unfoldStatus(task.status);
-    const statusText = statusArray.join(' ');
+    const statusText = getPortugueseStatusText(task.status);
     
     const statusColorClass = (
         statusArray.indexOf('Success') >= 0 ? 'status-success' :
@@ -484,8 +573,39 @@ const PueueTaskCard = ({
         'status-queued'
     );
 
-    const dateStart = task.start ? new Date(Date.parse(task.start)) : null;
-    const dateEnd = task.end ? new Date(Date.parse(task.end)) : null;
+    const isRunning = statusArray.indexOf('Running') >= 0;
+
+    React.useEffect(() => {
+        const updateTimer = () => {
+            const { start, end } = extractTimesFromStatus(task.status);
+            if (start) {
+                setElapsedTime(formatDuration(start, end, isRunning));
+            } else {
+                setElapsedTime('');
+            }
+        };
+
+        updateTimer();
+
+        const { start, end } = extractTimesFromStatus(task.status);
+        if (isRunning && start && !end) {
+            const interval = setInterval(updateTimer, 1000);
+            return () => clearInterval(interval);
+        }
+    }, [task.status, isRunning]);
+
+    const isReorderable = (
+        statusArray.indexOf('Success') < 0 &&
+        statusArray.indexOf('Failed') < 0 &&
+        statusArray.indexOf('Killed') < 0 &&
+        statusArray.indexOf('DependencyFailed') < 0 &&
+        statusArray.indexOf('Running') < 0
+    );
+
+    const { start: startStr, end: endStr, enqueued: enqueuedStr } = extractTimesFromStatus(task.status);
+    const dateStart = startStr ? new Date(Date.parse(startStr)) : null;
+    const dateEnd = endStr ? new Date(Date.parse(endStr)) : null;
+    const dateEnqueued = enqueuedStr ? new Date(Date.parse(enqueuedStr)) : null;
 
     const handleRestart = () => pueueManager.pueue('restart', {in_place: true}, [id]).then(alertDone).then(context.updateStatus);
     const handleKill = () => {
@@ -539,13 +659,82 @@ const PueueTaskCard = ({
     const isSelectedLogs = selectedTaskId === id && selectedTab === 'logs';
 
     return (
-        <Card className={`task-card ${statusColorClass} glass-panel ${isEditable ? 'is-editing' : ''} ${selectedTaskId === id ? 'is-active' : ''}`}>
+        <Card 
+            className={`task-card ${statusColorClass} glass-panel ${isEditable ? 'is-editing' : ''} ${selectedTaskId === id ? 'is-active' : ''}`}
+            draggable={canDrag && isReorderable}
+            onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', id);
+                e.dataTransfer.effectAllowed = 'move';
+                e.currentTarget.classList.add('is-dragging');
+            }}
+            onDragEnd={(e) => {
+                e.currentTarget.classList.remove('is-dragging');
+                setCanDrag(false);
+            }}
+            onDragOver={(e) => {
+                if (isReorderable) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                }
+            }}
+            onDragEnter={(e) => {
+                if (isReorderable) {
+                    e.currentTarget.classList.add('drag-over');
+                }
+            }}
+            onDragLeave={(e) => {
+                e.currentTarget.classList.remove('drag-over');
+            }}
+            onDrop={(e) => {
+                e.currentTarget.classList.remove('drag-over');
+                const draggedId = e.dataTransfer.getData('text/plain');
+                if (draggedId && draggedId !== id && isReorderable) {
+                    pueueManager.pueue('switch', {}, [draggedId, id])
+                        .then(() => {
+                            context.addAlert(`Tarefa #${draggedId} trocada com #${id}`, 'Sucesso', 'success');
+                            context.updateStatus();
+                        })
+                        .catch((err) => {
+                            context.addAlert(`Erro ao reordenar: ${err.message || err}`, 'Erro', 'danger');
+                        });
+                }
+            }}
+        >
             <div className="task-card-header">
-                <div className="task-identity">
-                    <span className="task-id">#{id}</span>
-                    <span className="task-label-text">{task.label || '(Sem etiqueta)'}</span>
+                <div className="task-header-row">
+                    <div className="task-identity">
+                        <span className="task-id">#{id}</span>
+                        <span className="task-label-text">{task.label || '(Sem etiqueta)'}</span>
+                    </div>
+                    <div className="task-header-actions-grip">
+                        {isReorderable && (
+                            <button 
+                                className="task-grip-handle" 
+                                title="Segure e arraste para reordenar"
+                                onMouseDown={() => setCanDrag(true)}
+                                onMouseUp={() => setCanDrag(false)}
+                                onTouchStart={() => setCanDrag(true)}
+                                onTouchEnd={() => setCanDrag(false)}
+                            >
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <path d="M8.5 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm7-12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/>
+                                </svg>
+                            </button>
+                        )}
+                    </div>
                 </div>
-                <span className={`task-status-tag ${statusColorClass}`}>{statusText}</span>
+                <div className="task-header-meta">
+                    <span className={`task-status-tag ${statusColorClass}`}>{statusText}</span>
+                    {elapsedTime && (
+                        <span className="task-elapsed-time" title="Tempo de uso">
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" style={{marginRight: '4px', display: 'inline-block', verticalAlign: 'middle'}}>
+                                <circle cx="12" cy="12" r="10"/>
+                                <polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                            <span style={{verticalAlign: 'middle'}}>{elapsedTime}</span>
+                        </span>
+                    )}
+                </div>
             </div>
 
             <div className="task-card-body">
@@ -570,30 +759,60 @@ const PueueTaskCard = ({
                     </Form>
                 ) : (
                     <>
-                        <div className="task-command-block">
-                            <code>{task.command}</code>
+                        <div className="task-command-row">
+                            <div className="task-command-block">
+                                <code>{task.command}</code>
+                            </div>
+                            <Button 
+                                variant="plain" 
+                                className="task-meta-toggle-btn"
+                                onClick={() => setShowMetadata(!showMetadata)}
+                                title={showMetadata ? "Ocultar detalhes" : "Mostrar detalhes"}
+                            >
+                                <svg 
+                                    viewBox="0 0 24 24" 
+                                    width="16" 
+                                    height="16" 
+                                    fill="none" 
+                                    stroke="currentColor" 
+                                    strokeWidth="2.5" 
+                                    strokeLinecap="round" 
+                                    strokeLinejoin="round"
+                                    style={{ transform: showMetadata ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
+                                >
+                                    <polyline points="6 9 12 15 18 9"/>
+                                </svg>
+                            </Button>
                         </div>
 
-                        <div className="task-metadata-grid">
-                            <div className="meta-item">
-                                <span className="meta-label">Diretório:</span>
-                                <span className="meta-value">{task.path}</span>
-                            </div>
-                            {task.dependencies && task.dependencies.length > 0 && (
+                        <div className={`task-metadata-wrapper ${showMetadata ? 'is-expanded' : ''}`}>
+                            <div className="task-metadata-grid">
                                 <div className="meta-item">
-                                    <span className="meta-label">Dependências:</span>
+                                    <span className="meta-label">Diretório:</span>
+                                    <span className="meta-value">{task.path}</span>
+                                </div>
+                                {task.dependencies && task.dependencies.length > 0 && (
+                                    <div className="meta-item">
+                                        <span className="meta-label">Dependências:</span>
+                                        <span className="meta-value">
+                                            {task.dependencies.map(depId => (
+                                                <span key={depId} className="task-dep-pill">#{depId}</span>
+                                            ))}
+                                        </span>
+                                    </div>
+                                )}
+                                {dateEnqueued && (
+                                    <div className="meta-item">
+                                        <span className="meta-label">Enfileirado em:</span>
+                                        <span className="meta-value">{formatTime(dateEnqueued)}</span>
+                                    </div>
+                                )}
+                                <div className="meta-item">
+                                    <span className="meta-label">Duração:</span>
                                     <span className="meta-value">
-                                        {task.dependencies.map(depId => (
-                                            <span key={depId} className="task-dep-pill">#{depId}</span>
-                                        ))}
+                                        {formatTime(dateStart)} &rarr; {formatTime(dateEnd)}
                                     </span>
                                 </div>
-                            )}
-                            <div className="meta-item">
-                                <span className="meta-label">Duração:</span>
-                                <span className="meta-value">
-                                    {formatTime(dateStart)} &rarr; {formatTime(dateEnd)}
-                                </span>
                             </div>
                         </div>
                     </>

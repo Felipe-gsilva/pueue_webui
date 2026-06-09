@@ -2161,6 +2161,7 @@ body::before {
   flex-direction: row;
   flex-wrap: nowrap;
   overflow-x: auto;
+  align-items: flex-start;
   gap: 16px;
   padding: 8px 4px 18px 4px;
   scroll-behavior: smooth;
@@ -2473,11 +2474,29 @@ body::before {
   font-family: inherit;
 }
 
+.task-metadata-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.task-metadata-wrapper.is-expanded {
+  grid-template-rows: 1fr;
+}
+
 .task-metadata-grid {
+  min-height: 0;
   display: grid;
   grid-template-columns: 1fr;
   gap: 6px;
   font-size: 0.8rem;
+  padding-top: 0;
+  transition: padding-top 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.task-metadata-wrapper.is-expanded .task-metadata-grid {
+  padding-top: 10px;
 }
 
 .meta-item {
@@ -3091,3 +3110,125 @@ body::before {
   background-color: rgba(255, 120, 0, 0.7) !important;
   color: #fff !important;
 }
+
+/* Task Card Reordering and Custom Layout Styles */
+.task-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.task-header-actions-grip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-header-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.task-grip-handle {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  cursor: grab;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 0.7;
+}
+
+.task-grip-handle:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+.task-grip-handle:active {
+  cursor: grabbing;
+}
+
+.task-elapsed-time {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+/* Drag and drop states */
+.task-card.is-dragging {
+  opacity: 0.4;
+  border: 1px dashed var(--text-secondary) !important;
+  transform: scale(0.98);
+}
+
+.task-card.drag-over {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.35) !important;
+  transform: translateY(-2px);
+}
+
+[data-theme='dark'] .task-card.drag-over,
+.pf-v5-theme-dark .task-card.drag-over {
+  border-color: #06b6d4 !important;
+  box-shadow: 0 0 16px rgba(6, 182, 212, 0.45) !important;
+}
+
+/* Collapsible Metadata Toggle */
+.task-command-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.task-command-row .task-command-block {
+  flex: 1;
+}
+
+.task-meta-toggle-btn {
+  padding: 6px !important;
+  border-radius: 6px !important;
+  color: var(--text-secondary) !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.task-meta-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Animations */
+.animate-slide-down {
+  animation: slideDown 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
