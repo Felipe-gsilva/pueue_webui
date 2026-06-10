@@ -30,7 +30,7 @@ install_system_dep "curl" "curl" "curl"
 install_system_dep "python3 python3-venv" "python" "python3"
 install_system_dep "nodejs npm" "nodejs npm" "node"
 # também vou instalar thermald e já rodar no final
-install_system_dep "thermald"
+install_system_dep "thermald" "thermald" "thermald"
 
 # 2. Configurar o PATH no .bashrc se necessário
 if [[ ":$PATH:" != *":$HOME/.cargo/bin:"* ]]; then
