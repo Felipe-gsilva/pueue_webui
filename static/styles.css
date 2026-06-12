@@ -2904,6 +2904,14 @@ body::before {
   font-weight: 500 !important;
 }
 
+.confirm-modal-footer .confirm-btn.primary-btn {
+  background: var(--pf-v5-global--primary-color--100, #0066cc) !important;
+}
+
+.confirm-modal-footer .confirm-btn.primary-btn:hover {
+  background: var(--pf-v5-global--primary-color--200, #004c99) !important;
+}
+
 .confirm-modal-footer .confirm-btn:hover {
   background: var(--pf-v5-global--danger-color--200, #a30000) !important;
 }

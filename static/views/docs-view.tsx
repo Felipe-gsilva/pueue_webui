@@ -155,7 +155,7 @@ Este projeto visa facilitar o monitoramento e escalonamento de experimentos comp
 ## Visão Geral
 * **Gerenciador de Fila**: Baseado no robusto motor CLI [Pueue](https://github.com/nuki12/pueue), permitindo empilhar processos sequenciais ou paralelos sem sobrecarregar a memória e GPU do host.
 * **Monitor do Sistema**: Mapeia em tempo real o uso de **CPU, Memória RAM, GPUs NVIDIA (VRAM e Temperatura)** e processos que mais consomem processamento.
-* 
+ 
 `
     },
     pueue: {
@@ -204,16 +204,19 @@ Qualquer conexão WebSocket sem token de sessão válido será rejeitada automat
         title: "Manual do Dashboard",
         markdown: `# Guia de Uso do Dashboard
 
-Aqui você encontra o manual de operações disponíveis na interface visual:
+Aqui você encontra o manual de operações disponíveis na interface visual e as regras de segurança aplicadas à interface compartilhada:
 
 ## Painel de Filas (Queue)
 * **Start / Pause**: Controla o estado de processamento de tarefas do grupo selecionado.
-* **Limpar Fila**: Remove tarefas já executadas com sucesso para despoluir a visualização.
-* **Visualizar Variáveis**: Exibe as variáveis de ambiente com as quais o processo foi iniciado. Agora você pode colapsar ou fechar esse bloco a qualquer momento.
-* **Logs em Tempo Real**: Visualize a saída padrão do processo. A janela suporta scroll automático (botão *Seguindo*) e pode ser expandida ou colapsada.
+* **Adicionar Tarefa**: Permite adicionar novas tarefas à fila de execução informando etiqueta, comando, diretório de trabalho, atraso e dependências.
+* **Editar Tarefa**: Permite modificar apenas a etiqueta (label) e as dependências (dependencies) da tarefa. Por segurança na interface compartilhada, não é permitido alterar o comando ou o diretório de trabalho após a criação.
+* **Reiniciar Tarefa**: Permite reiniciar tarefas concluídas ou falhadas diretamente pela UI. Caso a tarefa ainda esteja em execução (Executando), clicar neste botão exibirá o comando de terminal correspondente (\`pueue restart --in-place <id>\`) para você copiar e executar manualmente.
+* **Excluir Tarefa**: A exclusão direta de tarefas pela interface está desativada por segurança. Ao tentar excluir, a interface exibirá o comando de terminal correspondente (\`pueue remove <id>\`) para você copiar e rodar em seu terminal.
+* **Visualizar Variáveis**: Exibe as variáveis de ambiente com as quais o processo foi iniciado. Você pode colapsar ou recolher este bloco a qualquer momento.
+* **Logs em Tempo Real**: Visualize a saída padrão do processo. A janela de logs por padrão inicia colapsada para despoluir a visualização, suporta scroll automático (botão *Seguindo*) e pode ser expandida ou colapsada.
 
 ## Métricas do Sistema
-* O painel exibe gráficos em tempo real de hardware, incluindo as temperaturas e a tabela de processos ordenados pelo consumo atual de CPU.
+* O painel exibe gráficos em tempo real de hardware, incluindo as temperaturas de GPU e a tabela de processos ordenados pelo consumo atual de CPU.
 `
     }
 };

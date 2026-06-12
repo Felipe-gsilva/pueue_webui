@@ -518,7 +518,6 @@ const PueueTaskCard = ({
 }) => {
     const [ isEditable, setIsEditable ] = React.useState<boolean>(false);
     const [ showMetadata, setShowMetadata ] = React.useState<boolean>(false);
-    const [ canDrag, setCanDrag ] = React.useState<boolean>(false);
     const [ elapsedTime, setElapsedTime ] = React.useState<string>('');
 
     const context = React.useContext(pueueContext);
@@ -594,20 +593,37 @@ const PueueTaskCard = ({
         }
     }, [task.status, isRunning]);
 
-    const isReorderable = (
-        statusArray.indexOf('Success') < 0 &&
-        statusArray.indexOf('Failed') < 0 &&
-        statusArray.indexOf('Killed') < 0 &&
-        statusArray.indexOf('DependencyFailed') < 0 &&
-        statusArray.indexOf('Running') < 0
-    );
+
 
     const { start: startStr, end: endStr, enqueued: enqueuedStr } = extractTimesFromStatus(task.status);
     const dateStart = startStr ? new Date(Date.parse(startStr)) : null;
     const dateEnd = endStr ? new Date(Date.parse(endStr)) : null;
     const dateEnqueued = enqueuedStr ? new Date(Date.parse(enqueuedStr)) : null;
 
-    const handleRestart = () => pueueManager.pueue('restart', {in_place: true}, [id]).then(alertDone).then(context.updateStatus);
+    const handleRestart = () => {
+        if (isRunning) {
+            const commandToCopy = `pueue restart --in-place ${id}`;
+            context.showConfirm({
+                title: "Comando para Reiniciar Tarefa",
+                message: `A reinicialização de tarefas em execução direta pela interface está desativada por segurança. Copie o comando abaixo para executar no seu terminal:\n\n${commandToCopy}`,
+                confirmText: "Copiar Comando",
+                cancelText: "Fechar",
+                confirmVariant: "primary",
+                onConfirm: () => {
+                    navigator.clipboard.writeText(commandToCopy)
+                        .then(() => {
+                            context.addAlert('Comando copiado para a área de transferência!', 'Copiado', 'success');
+                        })
+                        .catch((err) => {
+                            console.error('Failed to copy command: ', err);
+                            context.addAlert('Não foi possível copiar o comando.', 'Erro', 'danger');
+                        });
+                }
+            });
+        } else {
+            pueueManager.pueue('restart', {in_place: true}, [id]).then(alertDone).then(context.updateStatus);
+        }
+    };
     const handleKill = () => {
         context.showConfirm({
             title: "Parar Tarefa",
@@ -632,13 +648,22 @@ const PueueTaskCard = ({
     };
     const handleStart = () => pueueManager.pueue('start', {}, [id]).then(alertDone).then(context.updateStatus);
     const handleRemove = () => {
+        const commandToCopy = `pueue remove ${id}`;
         context.showConfirm({
-            title: "Remover Tarefa",
-            message: `Tem certeza que deseja remover a tarefa #${id}?`,
-            confirmText: "Remover",
-            cancelText: "Cancelar",
+            title: "Comando para Excluir Tarefa",
+            message: `A exclusão direta de tarefas pela interface está desativada por segurança nesta versão compartilhada. Copie o comando abaixo para executar no seu terminal:\n\n${commandToCopy}`,
+            confirmText: "Copiar Comando",
+            cancelText: "Fechar",
+            confirmVariant: "primary",
             onConfirm: () => {
-                pueueManager.pueue('remove', {}, [id]).then(alertDone).then(context.updateStatus);
+                navigator.clipboard.writeText(commandToCopy)
+                    .then(() => {
+                        context.addAlert('Comando copiado para a área de transferência!', 'Copiado', 'success');
+                    })
+                    .catch((err) => {
+                        console.error('Failed to copy command: ', err);
+                        context.addAlert('Não foi possível copiar o comando.', 'Erro', 'danger');
+                    });
             }
         });
     };
@@ -661,67 +686,11 @@ const PueueTaskCard = ({
     return (
         <Card 
             className={`task-card ${statusColorClass} glass-panel ${isEditable ? 'is-editing' : ''} ${selectedTaskId === id ? 'is-active' : ''}`}
-            draggable={canDrag && isReorderable}
-            onDragStart={(e) => {
-                e.dataTransfer.setData('text/plain', id);
-                e.dataTransfer.effectAllowed = 'move';
-                e.currentTarget.classList.add('is-dragging');
-            }}
-            onDragEnd={(e) => {
-                e.currentTarget.classList.remove('is-dragging');
-                setCanDrag(false);
-            }}
-            onDragOver={(e) => {
-                if (isReorderable) {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                }
-            }}
-            onDragEnter={(e) => {
-                if (isReorderable) {
-                    e.currentTarget.classList.add('drag-over');
-                }
-            }}
-            onDragLeave={(e) => {
-                e.currentTarget.classList.remove('drag-over');
-            }}
-            onDrop={(e) => {
-                e.currentTarget.classList.remove('drag-over');
-                const draggedId = e.dataTransfer.getData('text/plain');
-                if (draggedId && draggedId !== id && isReorderable) {
-                    pueueManager.pueue('switch', {}, [draggedId, id])
-                        .then(() => {
-                            context.addAlert(`Tarefa #${draggedId} trocada com #${id}`, 'Sucesso', 'success');
-                            context.updateStatus();
-                        })
-                        .catch((err) => {
-                            context.addAlert(`Erro ao reordenar: ${err.message || err}`, 'Erro', 'danger');
-                        });
-                }
-            }}
         >
             <div className="task-card-header">
-                <div className="task-header-row">
-                    <div className="task-identity">
-                        <span className="task-id">#{id}</span>
-                        <span className="task-label-text">{task.label || '(Sem etiqueta)'}</span>
-                    </div>
-                    <div className="task-header-actions-grip">
-                        {isReorderable && (
-                            <button 
-                                className="task-grip-handle" 
-                                title="Segure e arraste para reordenar"
-                                onMouseDown={() => setCanDrag(true)}
-                                onMouseUp={() => setCanDrag(false)}
-                                onTouchStart={() => setCanDrag(true)}
-                                onTouchEnd={() => setCanDrag(false)}
-                            >
-                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                                    <path d="M8.5 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm7-12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/>
-                                </svg>
-                            </button>
-                        )}
-                    </div>
+                <div className="task-identity">
+                    <span className="task-id">#{id}</span>
+                    <span className="task-label-text">{task.label || '(Sem etiqueta)'}</span>
                 </div>
                 <div className="task-header-meta">
                     <span className={`task-status-tag ${statusColorClass}`}>{statusText}</span>
@@ -746,12 +715,7 @@ const PueueTaskCard = ({
                         <FormGroup label="Dependências" fieldId={`edit-deps-${id}`}>
                             <TextInput id={`edit-deps-${id}`} value={form.deps} onChange={(_, v) => setForm(f => ({ ...f, deps: v }))} />
                         </FormGroup>
-                        <FormGroup label="Comando" fieldId={`edit-command-${id}`} isRequired>
-                            <TextInput id={`edit-command-${id}`} value={form.command} onChange={(_, v) => setForm(f => ({ ...f, command: v }))} isRequired />
-                        </FormGroup>
-                        <FormGroup label="Caminho (Diretório)" fieldId={`edit-dir-${id}`}>
-                            <TextInput id={`edit-dir-${id}`} value={form.dir} onChange={(_, v) => setForm(f => ({ ...f, dir: v }))} />
-                        </FormGroup>
+
                         <div className="edit-actions" style={{display: 'flex', gap: '8px', marginTop: '12px'}}>
                             <Button size="sm" onClick={handleSaveEdit}>Salvar</Button>
                             <Button size="sm" variant="secondary" onClick={() => setIsEditable(false)}>Cancelar</Button>
@@ -1106,23 +1070,7 @@ const PueueGroupTable = ({ group, hash } : { group : string, hash : [string, str
                 </div>
                 
                 <div className="group-actions-section">
-                    <Button 
-                        variant="secondary" 
-                        onClick={() => {
-                            context.showConfirm({
-                                title: "Limpar Fila",
-                                message: `Tem certeza que deseja limpar todas as tarefas concluídas (com sucesso ou falhadas) do grupo "${group}"?`,
-                                confirmText: "Limpar Fila",
-                                cancelText: "Cancelar",
-                                onConfirm: async () => {
-                                    await pueueManager.pueue('clean', {group: group}).then(alertDone);
-                                    context.updateStatus();
-                                }
-                            });
-                        }}
-                    >
-                        Limpar Fila
-                    </Button>
+
                     <Button variant="primary" className="add-task-btn-main" onClick={() => setIsModalOpen(true)}>
                         + Adicionar Tarefa
                     </Button>
@@ -1285,6 +1233,7 @@ export const PueueView = ({
         confirmText: string;
         cancelText: string;
         onConfirm: () => void;
+        confirmVariant?: string;
     } | null>(null);
 
     const currentContext = new PueueContext();
@@ -1555,13 +1504,17 @@ export const PueueView = ({
                         <h3>{confirmAction.title}</h3>
                     </div>
                     <div className="confirm-modal-body">
-                        <p>{confirmAction.message}</p>
+                        <p style={{ whiteSpace: 'pre-wrap' }}>{confirmAction.message}</p>
                     </div>
                     <div className="confirm-modal-footer">
                         <Button variant="secondary" onClick={() => setConfirmAction(null)} className="cancel-btn">
                             {confirmAction.cancelText}
                         </Button>
-                        <Button variant="danger" onClick={() => { confirmAction.onConfirm(); setConfirmAction(null); }} className="confirm-btn">
+                        <Button 
+                            variant={(confirmAction.confirmVariant as any) || "danger"} 
+                            onClick={() => { confirmAction.onConfirm(); setConfirmAction(null); }} 
+                            className={`confirm-btn ${confirmAction.confirmVariant === 'primary' ? 'primary-btn' : ''}`}
+                        >
                             {confirmAction.confirmText}
                         </Button>
                     </div>
